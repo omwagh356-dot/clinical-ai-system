@@ -44,6 +44,14 @@ CLINICAL_DATABASE = {
         "next_steps": "1. Routine follow-up in 6 months. \n2. Continue lifestyle management.",
         "safety": "Cleared for standard activity."
     }
+    "Cardiac Emergency": {
+    "icon": "💔",
+    "severity": "Critical",
+    "symptoms": ["Chest Pressure", "Left Arm Pain", "Shortness of Breath", "Cold Sweat"],
+    "drugs": ["Aspirin (324mg)", "Nitroglycerin", "Morphine", "High-flow Oxygen"],
+    "next_steps": "1. 12-Lead ECG immediately. \n2. Check Troponin I/T levels. \n3. Activate Cath Lab/Cardiac Team.",
+    "safety": "Keep patient sitting upright. Minimize all physical movement. Prepare for ACLS."
+    }
 }
 
 # --- 3. PAGE CONFIG & MODEL LOADING ---
