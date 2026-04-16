@@ -17,8 +17,8 @@ except ImportError:
 # --- 2. THE CLINICAL KNOWLEDGE BASE ---
 SYMPTOM_DRUGS = {
     "chest pain": {
-        "rec": "Aspirin (324mg chewable), Nitroglycerin (if prescribed).",
-        "safety": "🚨 CRITICAL: Possible Myocardial Infarction. Do not delay transport to ER."
+        "rec": "Aspirin (324mg), Nitroglycerin (if prescribed).",
+        "safety": "🚨 CRITICAL: High risk of Heart Attack. Do not wait. Proceed to ER immediately."
     },
     "cough": {
         "rec": "Dextromethorphan (suppressant) or Guaifenesin (expectorant).",
@@ -47,6 +47,18 @@ SYMPTOM_DRUGS = {
     "shortness of breath": {
         "rec": "Rescue Inhaler (Albuterol) if prescribed; Oxygen.",
         "safety": "🚨 EMERGENCY: High risk of Respiratory Failure. Monitor SpO2 immediately."
+    },
+    "dizziness": {
+        "rec": "Meclizine or simple hydration/electrolyte rest.",
+        "safety": "⚠️ Risk of Stroke if accompanied by slurred speech or facial drooping."
+    },
+    "abdominal pain": {
+        "rec": "Antacids or Antispasmodics.",
+        "safety": "⚠️ Avoid heating pads or laxatives if pain is sharp and localized to lower right."
+    },
+    "allergic reaction": {
+        "rec": "Antihistamine (Diphenhydramine) or Epinephrine (if severe).",
+        "safety": "🚨 CRITICAL: If throat feels tight or voice is hoarse, use Epi-Pen and call ER."
     }
 }
 # --- 3. THE CLINICAL KNOWLEDGE BASE ---
