@@ -181,22 +181,22 @@ if st.button("RUN FULL DIAGNOSTIC", type="primary", use_container_width=True):
         st.write("**Reasoning:**", ", ".join(reasons))
         
     with tab2:
-    st.subheader("💊 Symptom-Based Recommendations")
+        st.subheader("💊 Symptom-Based Recommendations")
     
     # 1. Check what the user typed in 'curr_diseases' (Known Conditions)
-    user_input = curr_diseases.lower()
-    found_symptom = False
+        user_input = curr_diseases.lower()
+        found_symptom = False
 
-    for symptom, advice in SYMPTOM_DRUGS.items():
-        if symptom in user_input:
-            st.markdown(f"### For {symptom.capitalize()}:")
-            st.success(f"**Recommended:** {advice['rec']}")
-            st.warning(f"**Safety Check:** {advice['safety']}")
-            found_symptom = True
-            st.divider()
+        for symptom, advice in SYMPTOM_DRUGS.items():
+            if symptom in user_input:
+                st.markdown(f"### For {symptom.capitalize()}:")
+                st.success(f"**Recommended:** {advice['rec']}")
+                st.warning(f"**Safety Check:** {advice['safety']}")
+                found_symptom = True
+                st.divider()
 
-    if not found_symptom:
-        st.info("Enter symptoms like 'Fever', 'Cough', or 'Chest Pain' in the Known Conditions box for specific drug advice.")
+        if not found_symptom:
+            st.info("Enter symptoms like 'Fever', 'Cough', or 'Chest Pain' in the Known Conditions box for specific drug advice.")
 
     # 2. Show General Database Drugs (Your existing logic)
     st.subheader(f"Standard Protocol for {disease}")
