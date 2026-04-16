@@ -7,8 +7,17 @@ import joblib
 import smtplib
 from email.message import EmailMessage
 
+# --- IMPORTANT: Upload these files to GitHub too! ---
+try:
+    from drug_module import check_drugs
+    from explain import explain_values
+except ImportError:
+    # Fallback if files aren't uploaded yet
+    def check_drugs(a, b, c): return ["Module not found"], ["Upload drug_module.py"]
+    def explain_values(a, b, c, d): return ["Analysis pending"]
+
 # --- PAGE CONFIG ---
-st.set_page_config(page_title="Clinical AI Portal", page_icon="🏥")
+st.set_page_config(page_title="Clinical AI Portal", page_icon="🏥", layout="wide")
 
 # --- LOAD ASSETS ---
 @st.cache_resource
@@ -21,94 +30,125 @@ def load_assets():
 try:
     model, scaler, label_encoder = load_assets()
 except Exception as e:
-    st.error("Model files not found. Please upload model.h5, scaler.pkl, and label_encoder.pkl.")
+    st.error("⚠️ Model assets missing! Ensure model.h5, scaler.pkl, and label_encoder.pkl are on GitHub.")
 
+# --- EMAIL FUNCTION ---
 def send_to_doctor(receiver_email, data):
-    # --- NEW: Define the email content here ---
     msg = EmailMessage()
-    msg['Subject'] = f"Urgent Health Report: {data['name']}"
+    msg['Subject'] = f"Urgent Report: {data['Risk']} Risk - {data['Name']}"
     msg['From'] = st.secrets["EMAIL_USER"]
     msg['To'] = receiver_email
     
     msg.set_content(f"""
-    Patient Clinical Report
-    -----------------------
-    Name: {data['name']}
-    Age: {data['age']}
+    URGENT CLINICAL REPORT
+    ----------------------
+    Patient: {data['Name']} | Age: {data['Age']} | Gender: {data['Gender']}
     
-    Diagnosis: {data['disease']}
-    Confidence: {data['prob']}%
-    Risk Level: {data['risk']}
+    AI PREDICTION: {data['Disease']} ({data['Prob']}%)
+    RISK LEVEL: {data['Risk']}
+    URGENCY ACTION: {data['Urgency']}
+    REASONS: {data['Reasons']}
     
-    Vitals Summary:
+    VITAL SIGNS:
     HR: {data['hr']} | SpO2: {data['spo2']}% | Temp: {data['temp']}°C
     BP: {data['bps']}/{data['bpd']} | Glucose: {data['gluc']}
     """)
-    
+
     try:
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-            smtp.login(st.secrets["EMAIL_USER"], st.secrets["EMAIL_PASS"]) 
+            smtp.login(st.secrets["EMAIL_USER"], st.secrets["EMAIL_PASS"])
             smtp.send_message(msg)
         return True
-    except Exception as e:
-        st.error(f"Email error: {e}")
+    except:
         return False
 
 # --- UI LAYOUT ---
 st.title("🏥 Clinical AI Diagnostic System")
-st.markdown("Enter patient vitals below to generate an AI-driven risk assessment.")
 
-with st.form("diagnostic_form"):
-    col1, col2 = st.columns(2)
-    with col1:
-        name = st.text_input("Patient Name")
-        doc_email = st.text_input("Doctor Email")
-        age = st.number_input("Age", min_value=0, max_value=120, value=30)
-        hr = st.number_input("Heart Rate (BPM)", value=72)
-        bps = st.number_input("BP Systolic", value=120)
-    with col2:
-        spo2 = st.number_input("SpO2 %", value=98)
-        temp = st.number_input("Temperature °C", value=37.0)
-        gluc = st.number_input("Glucose mg/dL", value=95)
-        resp = st.number_input("Respiratory Rate", value=16)
-        bpd = st.number_input("BP Diastolic", value=80)
+# Create two main columns for the layout
+col_left, col_right = st.columns([1, 1])
 
-    submitted = st.form_submit_button("RUN DIAGNOSTIC")
+with col_left:
+    st.subheader("👤 Patient Identity")
+    name = st.text_input("Full Name")
+    doc_email = st.text_input("Doctor's Email")
+    g_col, a_col = st.columns(2)
+    gender = g_col.selectbox("Gender", ["Male", "Female", "Other"])
+    age = a_col.number_input("Age", value=30)
 
-if submitted:
-    # 1. Prepare Data
-    inputs = np.array([[age, hr, bps, bpd, spo2, temp, 200, gluc, resp]]) 
-
-    # 2. Predict
-    scaled_data = scaler.transform(inputs)
-    prediction = model.predict(scaled_data)
-    idx = np.argmax(prediction)
-    disease = label_encoder.inverse_transform([idx])[0]
-    prob = np.max(prediction) * 100
-
-    # 3. Triage Logic
-    risk = "Low"
-    color = "blue"
-    if spo2 < 90 or bps >= 180 or temp > 39.5:
-        risk = "High"
-        color = "red"
-
-    # 4. Display Results
-    st.markdown(f"### Result: :{color}[{disease}]")
-    st.metric("Confidence", f"{prob:.2f}%")
-    st.info(f"Risk Level: {risk}")
-
-    if risk == "High":
-        st.error("⚠️ IMMEDIATE DOCTOR VISIT REQUIRED")
+    st.subheader("📉 Clinical Vitals")
+    v1, v2, v3 = st.columns(3)
+    hr = v1.number_input("Heart Rate", value=72.0)
+    bps = v1.number_input("BP Systolic", value=120.0)
+    spo2 = v2.number_input("SpO2 %", value=98.0)
+    bpd = v2.number_input("BP Diastolic", value=80.0)
+    temp = v3.number_input("Temp °C", value=37.0)
+    gluc = v3.number_input("Glucose", value=95.0)
     
-    # 5. NEW: Trigger the email transfer
+    # Hidden defaults from your original code
+    chol = 190.0
+    resp = 16.0
+
+with col_right:
+    st.subheader("💊 Safety & History")
+    curr_drugs = st.text_area("Current Medications (comma separated)", placeholder="e.g. Aspirin, Metformin")
+    curr_diseases = st.text_area("Known Conditions", placeholder="e.g. Diabetes, Asthma")
+    curr_allergies = st.text_area("Allergies", placeholder="e.g. Penicillin")
+    
+    if st.button("Check Drug Safety", use_container_width=True):
+        warnings, recs = check_drugs(curr_drugs.split(","), curr_diseases.split(","), curr_allergies.split(","))
+        st.warning(f"**Warnings:** {chr(10).join(warnings)}")
+        st.success(f"**Recommendations:** {', '.join(recs)}")
+
+# --- ANALYSIS TRIGGER ---
+st.divider()
+if st.button("RUN FULL DIAGNOSTIC", type="primary", use_container_width=True):
+    # 1. Prediction
+    inputs = np.array([[age, hr, bps, bpd, spo2, temp, chol, gluc, resp]])
+    scaled = scaler.transform(pd.DataFrame(inputs, columns=["age", "heart_rate", "bp_systolic", "bp_diastolic", "spo2", "temp", "cholesterol", "glucose", "respiratory_rate"]))
+    pred = model.predict(scaled, verbose=0)
+    idx = np.argmax(pred)
+    disease = label_encoder.inverse_transform([idx])[0]
+    prob = pred[0][idx] * 100
+
+    # 2. Triage & Explanation
+    risk = "Low"
+    urgency = "No immediate action required"
+    if disease.lower() != "normal" and prob > 60:
+        risk = "Medium"
+        urgency = "Consultation recommended"
+    
+    if spo2 < 90 or temp > 39.5 or temp < 35.1 or bps >= 180 or gluc < 50:
+        risk = "High"
+        urgency = "IMMEDIATE DOCTOR VISIT REQUIRED / ER"
+
+    reasons = explain_values(hr, (bps+bpd)/2, spo2, temp)
+
+    # 3. Report & Transfer
+    report = {
+        "Name": name, "Age": age, "Gender": gender, "Disease": disease, 
+        "Risk": risk, "Prob": f"{prob:.2f}", "Urgency": urgency, "Reasons": ", ".join(reasons),
+        "hr": hr, "spo2": spo2, "temp": temp, "bps": bps, "bpd": bpd, "gluc": gluc
+    }
+    
+    # 4. Results Display
+    st.subheader("📊 Diagnostic Result")
+    res_box = st.container(border=True)
+    if risk == "High":
+        res_box.error(f"**PREDICTION:** {disease} ({prob:.2f}%)")
+    else:
+        res_box.success(f"**PREDICTION:** {disease} ({prob:.2f}%)")
+        
+    res_box.write(f"**Risk Level:** {risk} | **Action:** {urgency}")
+    res_box.write(f"**AI Reasoning:** {report['Reasons']}")
+
+    # 5. Transfer
     if doc_email:
-        report_data = {
-            "name": name, "age": age, "disease": disease, 
-            "prob": round(prob, 2), "risk": risk, "hr": hr, 
-            "spo2": spo2, "temp": temp, "bps": bps, "bpd": bpd, "gluc": gluc
-        }
-        with st.spinner("Transferring report to doctor..."):
-            success = send_to_doctor(doc_email, report_data)
-            if success:
-                st.success("Report successfully sent to doctor ✅")
+        with st.spinner("Sending report..."):
+            if send_to_doctor(doc_email, report):
+                st.success("Report Sent Successfully ✅")
+            else:
+                st.info("Report Saved Locally (Check output.csv) 💾")
+    
+    # Save to local CSV on the server
+    pd.DataFrame([report]).to_csv("output.csv", mode='a', header=not os.path.exists("output.csv"), index=False)
