@@ -15,6 +15,41 @@ except ImportError:
     st.error("⚠️ Missing 'drug_module.py' or 'explain.py' on GitHub. Please upload them!")
 
 # --- 2. THE CLINICAL KNOWLEDGE BASE ---
+SYMPTOM_DRUGS = {
+    "chest pain": {
+        "rec": "Aspirin (324mg chewable), Nitroglycerin (if prescribed).",
+        "safety": "🚨 CRITICAL: Possible Myocardial Infarction. Do not delay transport to ER."
+    },
+    "cough": {
+        "rec": "Dextromethorphan (suppressant) or Guaifenesin (expectorant).",
+        "safety": "⚠️ Avoid suppressants if cough is productive (bringing up mucus) and associated with fever."
+    },
+    "fever": {
+        "rec": "Acetaminophen (650mg) or Ibuprofen (400mg).",
+        "safety": "✅ Monitor for 'red flags' like stiff neck or confusion."
+    },
+    "cold": {
+        "rec": "Decongestants (Pseudoephedrine) and Vitamin C.",
+        "safety": "⚠️ Decongestants can significantly raise Blood Pressure. Use with caution in Hypertension."
+    },
+    "diarrhea": {
+        "rec": "Loperamide (Imodium) and Oral Rehydration Salts (ORS).",
+        "safety": "⚠️ Do not use Loperamide if there is blood in stool or high fever (indicates bacterial infection)."
+    },
+    "headache": {
+        "rec": "Ibuprofen (400mg) or Naproxen.",
+        "safety": "✅ Seek immediate care if headache is 'the worst of your life' or follows a head injury."
+    },
+    "nausea": {
+        "rec": "Ginger extract or Ondansetron (Zofran - Rx only).",
+        "safety": "⚠️ Persistent vomiting leads to Electrolyte Imbalance. Monitor SpO2 and HR."
+    },
+    "shortness of breath": {
+        "rec": "Rescue Inhaler (Albuterol) if prescribed; Oxygen.",
+        "safety": "🚨 EMERGENCY: High risk of Respiratory Failure. Monitor SpO2 immediately."
+    }
+}
+# --- 3. THE CLINICAL KNOWLEDGE BASE ---
 CLINICAL_DATABASE = {
     "Infection": {
         "icon": "🤒", "severity": "High",
