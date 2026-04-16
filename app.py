@@ -132,15 +132,17 @@ if st.button("RUN FULL DIAGNOSTIC", type="primary", use_container_width=True):
     }
     
     # 4. Results Display
+    # Find the Results Display section and change to this:
     st.subheader("📊 Diagnostic Result")
     res_box = st.container(border=True)
+
     if risk == "High":
+    # If it's High Risk, we display a warning even if the AI says 'Normal'
         res_box.error(f"**PREDICTION:** {disease} ({prob:.2f}%)")
+        res_box.markdown("⚠️ **Note:** AI Prediction contradicts critical vitals. Follow Emergency Action.")
     else:
         res_box.success(f"**PREDICTION:** {disease} ({prob:.2f}%)")
-        
-    res_box.write(f"**Risk Level:** {risk} | **Action:** {urgency}")
-    res_box.write(f"**AI Reasoning:** {report['Reasons']}")
+
 
     # 5. Transfer
     if doc_email:
