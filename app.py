@@ -23,19 +23,37 @@ try:
 except Exception as e:
     st.error("Model files not found. Please upload model.h5, scaler.pkl, and label_encoder.pkl.")
 
-def send_to_doctor(data):
-    # ... message setup code ...
+def send_to_doctor(receiver_email, data):
+    # --- NEW: Define the email content here ---
+    msg = EmailMessage()
+    msg['Subject'] = f"Urgent Health Report: {data['name']}"
+    msg['From'] = st.secrets["EMAIL_USER"]
+    msg['To'] = receiver_email
+    
+    msg.set_content(f"""
+    Patient Clinical Report
+    -----------------------
+    Name: {data['name']}
+    Age: {data['age']}
+    
+    Diagnosis: {data['disease']}
+    Confidence: {data['prob']}%
+    Risk Level: {data['risk']}
+    
+    Vitals Summary:
+    HR: {data['hr']} | SpO2: {data['spo2']}% | Temp: {data['temp']}°C
+    BP: {data['bps']}/{data['bpd']} | Glucose: {data['gluc']}
+    """)
     
     try:
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-            # THIS IS THE LINE TO REPLACE:
             smtp.login(st.secrets["EMAIL_USER"], st.secrets["EMAIL_PASS"]) 
-            
             smtp.send_message(msg)
         return True
     except Exception as e:
         st.error(f"Email error: {e}")
         return False
+
 # --- UI LAYOUT ---
 st.title("🏥 Clinical AI Diagnostic System")
 st.markdown("Enter patient vitals below to generate an AI-driven risk assessment.")
@@ -59,7 +77,7 @@ with st.form("diagnostic_form"):
 
 if submitted:
     # 1. Prepare Data
-    inputs = np.array([[age, hr, bps, bpd, spo2, temp, 200, gluc, resp]]) # 200 is placeholder for cholesterol
+    inputs = np.array([[age, hr, bps, bpd, spo2, temp, 200, gluc, resp]]) 
 
     # 2. Predict
     scaled_data = scaler.transform(inputs)
@@ -82,4 +100,15 @@ if submitted:
 
     if risk == "High":
         st.error("⚠️ IMMEDIATE DOCTOR VISIT REQUIRED")
-
+    
+    # 5. NEW: Trigger the email transfer
+    if doc_email:
+        report_data = {
+            "name": name, "age": age, "disease": disease, 
+            "prob": round(prob, 2), "risk": risk, "hr": hr, 
+            "spo2": spo2, "temp": temp, "bps": bps, "bpd": bpd, "gluc": gluc
+        }
+        with st.spinner("Transferring report to doctor..."):
+            success = send_to_doctor(doc_email, report_data)
+            if success:
+                st.success("Report successfully sent to doctor ✅")
