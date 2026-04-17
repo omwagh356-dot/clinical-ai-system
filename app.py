@@ -10,7 +10,7 @@ from tensorflow.keras.models import load_model
 # --- 1. CONFIG & ASSETS LOADING ---
 st.set_page_config(page_title="Clinical AI Portal", layout="wide", page_icon="🏥")
 
-# Theme-neutral CSS for professional "Clinical Vibe"
+# Theme-neutral CSS for professional UI
 st.markdown("""
     <style>
     .report-container { border: 2px solid #1a73e8; padding: 20px; border-radius: 10px; margin-top: 20px; color: inherit; }
@@ -21,7 +21,6 @@ st.markdown("""
 
 @st.cache_resource
 def load_ml_assets():
-    """Loads Deep Learning model and pre-processing scalers."""
     try:
         model = load_model("model/model.h5")
         scaler = joblib.load("scaler.pkl")
@@ -33,21 +32,18 @@ def load_ml_assets():
 
 @st.cache_data
 def load_knowledge_bases():
-    """Loads CSV/Excel with robust error handling for encoding and hidden characters."""
     symptom_file = 'DiseaseAndSymptoms.csv'
     medicine_file = 'Medicine_description.xlsx'
     
     if not os.path.exists(symptom_file) or not os.path.exists(medicine_file):
-        st.error(f"❌ Critical Error: Ensure '{medicine_file}' and '{symptom_file}' are in the project folder.")
+        st.error(f"❌ Missing files: Ensure '{medicine_file}' and '{symptom_file}' are in the folder.")
         return {}, pd.DataFrame()
 
     try:
-        # Load Symptoms
         disease_df = pd.read_csv(symptom_file, encoding='latin1', on_bad_lines='skip', engine='python')
-        # Load Medicines directly from Excel
         medicine_db = pd.read_excel(medicine_file)
         
-        # Aggressive Header Cleaning
+        # Clean headers to remove hidden spaces or Excel artifacts
         medicine_db.columns = [str(c).strip().replace('\xa0', '') for c in medicine_db.columns]
         
         disease_map = {}
@@ -58,7 +54,7 @@ def load_knowledge_bases():
             else: disease_map[d].update(s)
         return disease_map, medicine_db
     except Exception as e:
-        st.error(f"File Loading Error: {e}")
+        st.error(f"Data Load Error: {e}")
         return {}, pd.DataFrame()
 
 model, scaler, le = load_ml_assets()
@@ -67,32 +63,32 @@ disease_map, medicine_db = load_knowledge_bases()
 # --- 2. CORE SEARCH LOGIC ---
 
 def get_medication_recs(user_input_text, detected_disease):
-    """STRICT DISEASE-FIRST SEARCH: Prioritizes the detected disease to prevent irrelevant results."""
+    """STRICT DISEASE-FIRST SEARCH: Handles float/NaN errors and prioritizes clinical intent."""
     if medicine_db.empty: return []
     
-    primary_disease = detected_disease.lower().strip()
+    primary_disease = str(detected_disease).lower().strip()
     cols = list(medicine_db.columns)
     
-    # Standard mapping: Col 0: Name, Col 1: Reason, Col 2: Description
+    # Assume: Col 0: Name, Col 1: Reason, Col 2: Description
     name_col = cols[0]
     reason_col = cols[1]
     desc_col = cols[2] if len(cols) > 2 else cols[-1]
 
-    # PRIORITY 1: Look for exact/partial match in the 'Reason' column
-    # If Malaria is detected, find rows where 'Malaria' is the Reason.
+    # PRIORITY 1: Search for the detected disease in the 'Reason' column
     primary_mask = medicine_db[reason_col].astype(str).str.contains(primary_disease, case=False, na=False)
     primary_results = medicine_db[primary_mask]
 
-    # PRIORITY 2: If no direct disease match, search keywords in Description
+    # PRIORITY 2: Keyword search in 'Description' if primary search is empty
     if primary_results.empty:
         filler_words = {'i', 'have', 'very', 'bad', 'with', 'and', 'some', 'also', 'the', 'is', 'a'}
-        keywords = [word.strip(".,!").lower() for word in user_input_text.split() 
+        keywords = [word.strip(".,!").lower() for word in str(user_input_text).split() 
                     if word.lower() not in filler_words and len(word) > 4]
         
         if not keywords: return []
         
+        # Fixed: str(x).lower() prevents float attribute errors on empty cells
         secondary_mask = medicine_db[desc_col].astype(str).apply(
-            lambda x: sum(1 for word in keywords if word in x.lower()) >= 1
+            lambda x: sum(1 for word in keywords if word in str(x).lower()) >= 1
         )
         final_results = medicine_db[secondary_mask].head(5)
     else:
@@ -107,13 +103,12 @@ def get_medication_recs(user_input_text, detected_disease):
     return matches
 
 def send_to_doctor(receiver_email, report, drug_list):
-    """Sends detailed medical alert via Gmail SMTP."""
     msg = EmailMessage()
     msg['Subject'] = f"🚨 {report['urgency']} Alert: {report['name']}"
     msg['From'] = st.secrets["EMAIL_USER"]
     msg['To'] = receiver_email
     med_text = "\n".join([f"- {m['Drug_Name']}: {m['Description'][:100]}..." for m in drug_list])
-    body = f"PATIENT: {report['name']} ({report['age']})\nURGENCY: {report['urgency']}\nDIAGNOSIS: {report['disease']}\nDETECTION: {report['symptom_disease']}\n\nTHERAPY:\n{med_text}"
+    body = f"PATIENT: {report['name']}\nURGENCY: {report['urgency']}\nAI DIAGNOSIS: {report['disease']}\nSYMPTOM DETECTION: {report['symptom_disease']}\n\nTHERAPY:\n{med_text}"
     msg.set_content(body)
     try:
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
@@ -124,13 +119,13 @@ def send_to_doctor(receiver_email, report, drug_list):
 
 # --- 3. UI LAYOUT ---
 st.title("🏥 Clinical AI: Intelligent Risk & Therapy Engine")
-st.caption("Onkar Suresh Wagh | M.Sc. Data Science Final Project")
+st.caption("Onkar Suresh Wagh | M.Sc. Data Science Project")
 st.divider()
 
 col_l, col_r = st.columns([1, 1], gap="large")
 with col_l:
     st.subheader("👤 Patient Identity & Vitals")
-    p_name = st.text_input("Full Name")
+    p_name = st.text_input("Full Name", "Onkar Wagh")
     doc_email = st.text_input("Doctor Email")
     p_age = st.number_input("Age", 1, 120, 23)
     v1, v2 = st.columns(2)
@@ -141,21 +136,24 @@ with col_l:
 
 with col_r:
     st.subheader("📋 Clinical Presentation")
-    s_input = st.text_area("Enter Symptoms (e.g. 'I have high fever and shivering', 'Joint stiffness')")
+    s_input = st.text_area("Enter Symptoms (e.g. 'high fever', 'joint stiffness', 'yellow skin')")
 
 # --- 4. EXECUTION ---
 st.divider()
-if st.button("RUN FULL DIAGNOSTIC & NOTIFY DOCTOR", type="primary", use_container_width=True):
+if st.button("RUN FULL DIAGNOSTIC & NOTIFY DOCTOR", type="primary"):
     if model and scaler:
-        # A. Vitals Engine
+        # A. Vitals Engine - Using DataFrame to fix StandardScaler Warning
+        features = ['age', 'heart_rate', 'bp_systolic', 'bp_diastolic', 'spo2', 'temp', 'cholesterol', 'glucose', 'respiratory_rate']
         raw_v = [p_age, hr, bps, 80.0, spo2, temp, 190.0, 95.0, 16.0]
-        scaled = scaler.transform([raw_v])
+        input_df = pd.DataFrame([raw_v], columns=features)
+        
+        scaled = scaler.transform(input_df)
         pred = model.predict(scaled, verbose=0)
         idx = np.argmax(pred)
         dl_disease = le.inverse_transform([idx])[0]
         prob = pred[0][idx] * 100
         
-        # B. Safety Overrides (Fever/Hypoxia)
+        # B. Safety Overrides
         if temp >= 40.0:
             dl_disease = "Hyperpyrexia (Critical Fever)"
             prob = 100.0
@@ -177,8 +175,7 @@ if st.button("RUN FULL DIAGNOSTIC & NOTIFY DOCTOR", type="primary", use_containe
             <p><b>Symptom Detection:</b> {res_disease}</p>
             <p><b>Status:</b> <span style="color: {'red' if urgency != 'Stable' else 'green'}; font-weight: bold;">{urgency}</span></p></div>""", unsafe_allow_html=True)
 
-        # F. Strict Medication Search
-        # Uses the Symptom detection first, then Vitals detection if needed
+        # F. Therapy Recommendation
         final_query = res_disease if res_disease != "General Assessment" else dl_disease
         meds = get_medication_recs(s_input, final_query)
         
@@ -187,12 +184,13 @@ if st.button("RUN FULL DIAGNOSTIC & NOTIFY DOCTOR", type="primary", use_containe
             for m in meds: 
                 st.markdown(f'<div class="drug-card"><b>{m["Drug_Name"]}</b><br><small>{m["Description"]}</small></div>', unsafe_allow_html=True)
         else:
-            st.warning("No matching medications found. Ensure condition name is in Excel Reason column.")
+            st.warning("No matching medications found in database.")
         
         # G. Email Alert
         if doc_email:
-            with st.spinner("Emailing alert..."):
-                if send_to_doctor(doc_email, {'name': p_name, 'age': p_age, 'disease': dl_disease, 'prob': f"{prob:.2f}", 'urgency': urgency, 'vitals': raw_v, 'symptom_disease': res_disease}, meds):
-                    st.success(f"Clinical alert sent to {doc_email}! ✅")
+            with st.spinner("Sending medical alert..."):
+                report = {'name': p_name, 'age': p_age, 'disease': dl_disease, 'prob': f"{prob:.2f}", 'urgency': urgency, 'vitals': raw_v, 'symptom_disease': res_disease}
+                if send_to_doctor(doc_email, report, meds):
+                    st.success(f"Report emailed to {doc_email}! ✅")
     else:
-        st.error("Missing ML Assets (model.h5). check file directory.")
+        st.error("Missing ML Assets (model.h5). Please verify file placement.")
