@@ -80,13 +80,19 @@ def send_to_doctor(receiver_email, report, reasons, safety_warnings):
     msg['From'] = st.secrets["EMAIL_USER"]
     msg['To'] = receiver_email
     
-    body = f"""
-    CLINICAL REPORT: {report['Name']}
+   body = f"""
+    OFFICIAL CLINICAL REPORT
     -------------------------------
-    RESULT: {report['Disease']} ({report['Prob']}%)
-    URGENCY: {report['Urgency']}
+    PATIENT DETAILS:
+    - Full Name: {report['Name']}
+    - Age: {report['Age']}
+    - Gender: {report['Gender']}
     
-    SYMPTOMS/CONDITIONS:
+    DIAGNOSTIC SUMMARY:
+    - Result: {report['Disease']} ({report['Prob']}%)
+    - Urgency: {report['Urgency']}
+    
+    SYMPTOMS & CONDITIONS:
     {report['Symptoms']}
 
     VITALS ANALYSIS:
@@ -94,10 +100,8 @@ def send_to_doctor(receiver_email, report, reasons, safety_warnings):
 
     DRUG SAFETY WARNINGS:
     {chr(10).join(['- ' + w for w in safety_warnings]) if safety_warnings else "No interactions flagged."}
-
-    RAW VITALS: {report['vitals']}
     -------------------------------
-    Generated via Clinical AI. Requires MD Verification.
+    Generated via Clinical AI. MD Verification required.
     """
     msg.set_content(body)
     try:
