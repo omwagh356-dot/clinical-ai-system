@@ -38,7 +38,10 @@ def load_knowledge_bases():
     try:
         disease_df = pd.read_csv(symptom_file, encoding='latin1', on_bad_lines='skip', engine='python')
         medicine_db = pd.read_csv(medicine_file, encoding='latin1', on_bad_lines='skip', engine='python')
+        
+        # Aggressive Header Cleaning
         medicine_db.columns = [str(c).strip().replace('\xa0', '') for c in medicine_db.columns]
+        
         disease_map = {}
         for _, row in disease_df.iterrows():
             d = str(row['Disease']).strip()
@@ -56,21 +59,21 @@ disease_map, medicine_db = load_knowledge_bases()
 
 def get_medication_recs(user_input_text, detected_disease):
     """
-    Scenarios 1 & 2: Searches based on raw user symptoms AND the AI-detected disease.
+    ULTRA-SMART SEARCH: Scans all columns for any mention of symptoms or diseases.
     """
     if medicine_db.empty: return []
     
-    # 1. Standardize search keywords from both user text and detection
-    combined_query = f"{user_input_text} {detected_disease}".lower().replace(",", " ")
-    keywords = [word.strip() for word in combined_query.split() if len(word) > 3]
+    # 1. Standardize query words
+    combined_query = f"{user_input_text} {detected_disease}".lower().replace(",", " ").replace("(", " ").replace(")", " ")
+    keywords = [word.strip() for word in combined_query.split() if len(word) > 2]
     
-    # Clinical Synonym Mapping for better 'vibe' and accuracy
+    # Clinical Synonym Expansion
     synonyms = {
-        "jaundice": ["liver", "hepatitis", "bilirubin", "yellow"],
-        "arthritis": ["joint", "swelling", "inflammation", "stiffness", "nsaid"],
-        "fever": ["pyrexia", "infection", "paracetamol", "cold"],
-        "malaria": ["quinine", "parasite", "fever", "chills"],
-        "anemia": ["iron", "blood", "weakness", "folic"]
+        "arthritis": ["arthriti", "joint", "inflammation", "pain", "swelling", "nsaid", "osteo"],
+        "anemia": ["anemi", "iron", "blood", "weakness", "folic", "haemoglobin"],
+        "jaundice": ["liver", "hepatitis", "bilirubin", "yellow", "bile"],
+        "fever": ["pyrexia", "infection", "paracetamol", "cold", "feverish"],
+        "malaria": ["quinine", "parasite", "fever", "chills", "mosquito"]
     }
     
     final_keywords = set(keywords)
@@ -81,8 +84,13 @@ def get_medication_recs(user_input_text, detected_disease):
     if not final_keywords: return []
 
     try:
-        # Search every column in the medicine database for these keywords
-        mask = medicine_db.apply(lambda row: any(word in str(val).lower() for word in final_keywords for val in row), axis=1)
+        # Create a search string for every row by joining all column values
+        # This ensures we find the word even if it is in the 'Reason' or 'Description' column
+        def row_contains_keywords(row):
+            row_content = " ".join(row.astype(str)).lower()
+            return any(word in row_content for word in final_keywords)
+
+        mask = medicine_db.apply(row_contains_keywords, axis=1)
         results = medicine_db[mask].head(5)
         
         final_list = []
@@ -126,7 +134,7 @@ with col_l:
 
 with col_r:
     st.subheader("📋 Clinical Presentation")
-    s_input = st.text_area("Enter Symptoms (e.g. 'yellowish eye', 'joint swelling', or 'I have malaria')")
+    s_input = st.text_area("Enter Symptoms (e.g. 'joint pain', 'yellow eye', 'I have malaria')")
 
 # --- 4. EXECUTION ---
 st.divider()
@@ -138,12 +146,12 @@ if st.button("RUN FULL DIAGNOSTIC & NOTIFY DOCTOR", type="primary", use_containe
         pred = model.predict(scaled, verbose=0)
         idx = np.argmax(pred); dl_disease = le.inverse_transform([idx])[0]; prob = pred[0][idx] * 100
         
-        # B. Symptom Engine (Scenario 2: Detection)
+        # B. Symptom Engine (Detection)
         user_text = s_input.lower()
         matched_scores = {d: sum(1 for sym in s_set if sym in user_text) for d, s_set in disease_map.items()}
         res_disease = max(matched_scores, key=matched_scores.get, default="General Assessment") if any(matched_scores.values()) else "General Assessment"
         
-        # C. Triage Status
+        # C. Triage
         urgency = "IMMEDIATE ER" if spo2 < 90 or bps > 175 or temp >= 38.5 else "Stable"
 
         # D. Display Results
@@ -152,8 +160,7 @@ if st.button("RUN FULL DIAGNOSTIC & NOTIFY DOCTOR", type="primary", use_containe
             <p><b>Symptom Detection:</b> {res_disease}</p>
             <p><b>Status:</b> <span style="color: {'red' if urgency != 'Stable' else 'green'}; font-weight: bold;">{urgency}</span></p></div>""", unsafe_allow_html=True)
 
-        # E. HYBRID THERAPY RECOMMENDATION (Scenario 1 & 2 Combined)
-        # It takes the input keywords AND the detected disease name to search for drugs
+        # E. MULTI-COLUMN FUZZY SEARCH
         meds = get_medication_recs(s_input, res_disease)
         
         if meds:
@@ -161,7 +168,7 @@ if st.button("RUN FULL DIAGNOSTIC & NOTIFY DOCTOR", type="primary", use_containe
             for m in meds: 
                 st.markdown(f'<div class="drug-card"><b>{m["Drug_Name"]}</b><br><small>{m["Description"]}</small></div>', unsafe_allow_html=True)
         else:
-            st.warning("No medications found. Try using broader terms like 'pain' or 'fever'.")
+            st.warning("No specific medications found. Try broader terms like 'pain' or 'liver'.")
         
         if doc_email:
             with st.spinner("Emailing alert..."):
