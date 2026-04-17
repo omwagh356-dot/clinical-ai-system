@@ -81,7 +81,7 @@ def send_to_doctor(receiver_email, report, reasons, safety_warnings):
     msg['To'] = receiver_email
     
     body = f"""
-    CLINICAL REPORT: {report['Name','Age','Gender']}
+    CLINICAL REPORT: {report['Name']}
     -------------------------------
     RESULT: {report['Disease']} ({report['Prob']}%)
     URGENCY: {report['Urgency']}
