@@ -183,16 +183,32 @@ if st.button("RUN FULL DIAGNOSTIC", type="primary", use_container_width=True):
         st.write(f"**Urgency:** {urgency}")
         st.write("**Reasoning:**", ", ".join(reasons))
         
-    with tab2:
-        st.subheader("💊 Symptom Recommendations")
-        user_input = curr_diseases.lower()
-        found = False
-        for sym, adv in SYMPTOM_DRUGS.items():
-            if sym in user_input:
-                st.info(f"**For {sym.capitalize()}:** {adv['rec']}")
-                st.warning(f"Safety: {adv['safety']}")
-                found = True
-        if not found: st.info("No specific symptoms detected.")
+with tab2:
+        st.subheader("💊 Symptom-Based Recommendations")
+        user_input = curr_diseases.lower().strip()
+        found_symptom = False
+        
+        # Only try to map symptoms if the user actually typed something
+        if user_input:
+            for symptom, advice in SYMPTOM_DRUGS.items():
+                if symptom in user_input:
+                    with st.container(border=True):
+                        st.info(f"**For {symptom.capitalize()}:** {advice['rec']}")
+                        st.warning(f"Safety: {advice['safety']}")
+                    found_symptom = True
+            
+            if found_symptom:
+                st.divider()
+        
+        # This part will ALWAYS show, even if the symptoms box is empty
+        st.subheader(f"Standard Hospital Protocol for {disease}")
+        st.markdown(f"The following medications and actions are standard for a diagnosis of **{disease}**:")
+        
+        # Create a clean list of the drugs from your CLINICAL_DATABASE
+        for d in info['drugs']:
+            st.success(f"✔️ {d}")
+        
+        st.info(f"**Clinical Pathway:** {info['next_steps']}")
 
     with tab3:
         html_report = create_pdf_report(report_data, info, reasons, warnings)
