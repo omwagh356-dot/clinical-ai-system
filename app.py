@@ -28,7 +28,7 @@ def load_knowledge_bases():
         # Load Disease and Symptoms
         disease_df = pd.read_csv('DiseaseAndSymptoms.csv')
         # Load Medicine Descriptions
-        medicine_db = pd.read_csv('Medicine_description.xlsx - Sheet1.csv')
+        medicine_db = pd.read_csv('Medicine_description.xlsx')
         
         # Build a searchable map: {Disease: {symptom1, symptom2}}
         disease_map = {}
