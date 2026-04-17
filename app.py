@@ -54,27 +54,35 @@ disease_map, medicine_db = load_knowledge_bases()
 
 # --- 2. CORE LOGIC ---
 
-def get_medication_recs(search_term):
-    """Direct search for the detected disease in the medicine database."""
-    if not search_term or medicine_db.empty or search_term == "General Assessment": 
-        return []
+def get_medication_recs(user_input_text, detected_disease):
+    """
+    Scenarios 1 & 2: Searches based on raw user symptoms AND the AI-detected disease.
+    """
+    if medicine_db.empty: return []
     
-    # Context Mapping to ensure 'Arthritis' or 'Anemia' matches synonyms in your sheet
+    # 1. Standardize search keywords from both user text and detection
+    combined_query = f"{user_input_text} {detected_disease}".lower().replace(",", " ")
+    keywords = [word.strip() for word in combined_query.split() if len(word) > 3]
+    
+    # Clinical Synonym Mapping for better 'vibe' and accuracy
     synonyms = {
-        "arthritis": ["arthritis", "joint", "inflammation", "nsaid", "pain"],
-        "anemia": ["anemia", "iron", "blood", "weakness", "folic"],
-        "jaundice": ["liver", "hepatitis", "bilirubin", "jaundice"],
-        "fever": ["pyrexia", "fever", "paracetamol", "infection"]
+        "jaundice": ["liver", "hepatitis", "bilirubin", "yellow"],
+        "arthritis": ["joint", "swelling", "inflammation", "stiffness", "nsaid"],
+        "fever": ["pyrexia", "infection", "paracetamol", "cold"],
+        "malaria": ["quinine", "parasite", "fever", "chills"],
+        "anemia": ["iron", "blood", "weakness", "folic"]
     }
     
-    # Build a list of words to search for
-    keywords = [search_term.lower()]
-    if search_term.lower() in synonyms:
-        keywords.extend(synonyms[search_term.lower()])
+    final_keywords = set(keywords)
+    for key, syns in synonyms.items():
+        if key in combined_query:
+            final_keywords.update(syns)
+
+    if not final_keywords: return []
 
     try:
-        # Search all columns for any of our keywords
-        mask = medicine_db.apply(lambda row: any(word in str(val).lower() for word in keywords for val in row), axis=1)
+        # Search every column in the medicine database for these keywords
+        mask = medicine_db.apply(lambda row: any(word in str(val).lower() for word in final_keywords for val in row), axis=1)
         results = medicine_db[mask].head(5)
         
         final_list = []
@@ -92,7 +100,7 @@ def send_to_doctor(receiver_email, report, drug_list):
     msg['From'] = st.secrets["EMAIL_USER"]
     msg['To'] = receiver_email
     med_text = "\n".join([f"- {m['Drug_Name']}: {m['Description'][:100]}..." for m in drug_list])
-    body = f"PATIENT: {report['name']}\nDIAGNOSIS: {report['disease']}\nDETECTION: {report['symptom_disease']}\n\nTHERAPY:\n{med_text}"
+    body = f"PATIENT: {report['name']}\nDETECTION: {report['symptom_disease']}\n\nTHERAPY:\n{med_text}"
     msg.set_content(body)
     try:
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
@@ -100,7 +108,7 @@ def send_to_doctor(receiver_email, report, drug_list):
             smtp.send_message(msg); return True
     except: return False
 
-# --- 3. UI ---
+# --- 3. UI LAYOUT ---
 st.title("🏥 Clinical AI: Intelligent Risk & Therapy Engine")
 st.divider()
 
@@ -118,7 +126,7 @@ with col_l:
 
 with col_r:
     st.subheader("📋 Clinical Presentation")
-    s_input = st.text_area("Type symptoms (e.g. 'joint pain', 'stiffness', 'weakness')")
+    s_input = st.text_area("Enter Symptoms (e.g. 'yellowish eye', 'joint swelling', or 'I have malaria')")
 
 # --- 4. EXECUTION ---
 st.divider()
@@ -128,38 +136,35 @@ if st.button("RUN FULL DIAGNOSTIC & NOTIFY DOCTOR", type="primary", use_containe
         raw_v = [p_age, hr, bps, 80.0, spo2, temp, 190.0, 95.0, 16.0]
         scaled = scaler.transform([raw_v])
         pred = model.predict(scaled, verbose=0)
-        idx = np.argmax(pred)
-        dl_disease = le.inverse_transform([idx])[0]
-        prob = pred[0][idx] * 100
+        idx = np.argmax(pred); dl_disease = le.inverse_transform([idx])[0]; prob = pred[0][idx] * 100
         
-        # B. Smart Symptom Matcher (DETECTION)
+        # B. Symptom Engine (Scenario 2: Detection)
         user_text = s_input.lower()
         matched_scores = {d: sum(1 for sym in s_set if sym in user_text) for d, s_set in disease_map.items()}
         res_disease = max(matched_scores, key=matched_scores.get, default="General Assessment") if any(matched_scores.values()) else "General Assessment"
         
-        # C. Triage Logic
+        # C. Triage Status
         urgency = "IMMEDIATE ER" if spo2 < 90 or bps > 175 or temp >= 38.5 else "Stable"
 
-        # D. Display Report
+        # D. Display Results
         st.markdown(f"""<div class="report-container"><h2 style='text-align: center;'>Clinical Diagnostic Report</h2><hr>
-            <p><b>AI Diagnosis (Vitals):</b> {dl_disease} ({prob:.2f}%)</p>
+            <p><b>AI Vital Diagnosis:</b> {dl_disease} ({prob:.2f}%)</p>
             <p><b>Symptom Detection:</b> {res_disease}</p>
             <p><b>Status:</b> <span style="color: {'red' if urgency != 'Stable' else 'green'}; font-weight: bold;">{urgency}</span></p></div>""", unsafe_allow_html=True)
 
-        # E. DIRECT THERAPY RECOMMENDATION FROM DETECTION
-        # If Symptom Engine found something, use it first. If not, use Vitals Engine result.
-        final_query = res_disease if res_disease != "General Assessment" else dl_disease
-        meds = get_medication_recs(final_query)
+        # E. HYBRID THERAPY RECOMMENDATION (Scenario 1 & 2 Combined)
+        # It takes the input keywords AND the detected disease name to search for drugs
+        meds = get_medication_recs(s_input, res_disease)
         
         if meds:
-            st.subheader(f"💊 Recommended Therapy for {final_query}")
+            st.subheader(f"💊 Recommended Therapy")
             for m in meds: 
                 st.markdown(f'<div class="drug-card"><b>{m["Drug_Name"]}</b><br><small>{m["Description"]}</small></div>', unsafe_allow_html=True)
         else:
-            st.warning("No specific medications found in database for the detected condition.")
+            st.warning("No medications found. Try using broader terms like 'pain' or 'fever'.")
         
         if doc_email:
-            with st.spinner("Sending alert..."):
+            with st.spinner("Emailing alert..."):
                 if send_to_doctor(doc_email, {'name': p_name, 'age': p_age, 'disease': dl_disease, 'prob': f"{prob:.2f}", 'urgency': urgency, 'vitals': raw_v, 'symptom_disease': res_disease}, meds):
                     st.success("Report emailed! ✅")
     else: st.error("Missing Assets.")
