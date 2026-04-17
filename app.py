@@ -7,10 +7,9 @@ import smtplib
 from email.message import EmailMessage
 from tensorflow.keras.models import load_model
 
-# --- 1. CONFIG & ASSETS LOADING ---
+# --- 1. CONFIG & ASSETS ---
 st.set_page_config(page_title="Clinical AI Portal", layout="wide", page_icon="🏥")
 
-# Theme-neutral CSS for Dark/Light mode visibility
 st.markdown("""
     <style>
     .report-container { border: 2px solid #1a73e8; padding: 20px; border-radius: 10px; margin-top: 20px; color: inherit; }
@@ -33,13 +32,18 @@ def load_ml_assets():
 def load_knowledge_bases():
     symptom_file = 'DiseaseAndSymptoms.csv'
     medicine_file = 'Medicine_description.xlsx'
+    
     if not os.path.exists(symptom_file) or not os.path.exists(medicine_file):
         st.error("❌ CSV files missing from directory.")
         return {}, pd.DataFrame()
+
     try:
         disease_df = pd.read_csv(symptom_file, encoding='latin1', on_bad_lines='skip', engine='python')
         medicine_db = pd.read_csv(medicine_file, encoding='latin1', on_bad_lines='skip', engine='python')
-        medicine_db.columns = medicine_db.columns.str.strip()
+        
+        # AGGRESSIVE CLEANING: Strip all whitespace and invisible chars from headers
+        medicine_db.columns = [str(c).strip().replace('\xa0', '') for c in medicine_db.columns]
+        
         disease_map = {}
         for _, row in disease_df.iterrows():
             d = str(row['Disease']).strip()
@@ -53,15 +57,15 @@ def load_knowledge_bases():
 model, scaler, le = load_ml_assets()
 disease_map, medicine_db = load_knowledge_bases()
 
-# --- 2. LOGIC FUNCTIONS ---
+# --- 2. CORE LOGIC ---
 
 def send_to_doctor(receiver_email, report, drug_list):
     msg = EmailMessage()
     msg['Subject'] = f"🚨 {report['urgency']} Alert: {report['name']}"
     msg['From'] = st.secrets["EMAIL_USER"]
     msg['To'] = receiver_email
-    med_text = "\n".join([f"- {m['Drug_Name']}: {m['Description'][:150]}..." for m in drug_list])
-    body = f"PATIENT: {report['name']} ({report['age']} years)\nDIAGNOSIS: {report['disease']}\nURGENCY: {report['urgency']}\n\nTHERAPY:\n{med_text}"
+    med_text = "\n".join([f"- {m.get('Drug_Name', 'N/A')}: {m.get('Description', 'N/A')[:100]}..." for m in drug_list])
+    body = f"PATIENT: {report['name']}\nDIAGNOSIS: {report['disease']}\nSYMPTOMS: {report['symptom_disease']}\nURGENCY: {report['urgency']}\n\nTHERAPY:\n{med_text}"
     msg.set_content(body)
     try:
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
@@ -71,13 +75,35 @@ def send_to_doctor(receiver_email, report, drug_list):
 
 def get_medication_recs(search_term):
     if not search_term or medicine_db.empty: return []
-    cols = medicine_db.columns
-    target_col = 'Reason' if 'Reason' in cols else 'Disease'
-    mask = medicine_db[target_col].str.contains(search_term[:5], case=False, na=False)
-    return medicine_db[mask][['Drug_Name', 'Description']].head(5).to_dict('records')
+    
+    # AGGRESSIVE COLUMN SEARCH
+    cols = list(medicine_db.columns)
+    # 1. Look for 'Reason' exactly
+    if 'Reason' in cols: target_col = 'Reason'
+    # 2. Look for anything containing 'reason' or 'disease'
+    else:
+        possible = [c for c in cols if 'reason' in c.lower() or 'disease' in c.lower()]
+        target_col = possible[0] if possible else None
 
-# --- 3. UI LAYOUT ---
-st.title("🏥 Clinical AI: Intelligent Risk & Therapy Engine")
+    if not target_col:
+        return []
+
+    try:
+        mask = medicine_db[target_col].astype(str).str.contains(search_term[:5], case=False, na=False)
+        # Ensure 'Drug_Name' and 'Description' are also stripped/found
+        d_name_col = [c for c in cols if 'drug' in c.lower()][0] if any('drug' in c.lower() for c in cols) else cols[0]
+        desc_col = [c for c in cols if 'desc' in c.lower()][1 if 'desc' in cols[0].lower() else 0] # fallback
+        if 'Description' in cols: desc_col = 'Description'
+
+        results = medicine_db[mask][[d_name_col, desc_col]].head(5)
+        # Rename to consistent keys for UI
+        results.columns = ['Drug_Name', 'Description']
+        return results.to_dict('records')
+    except:
+        return []
+
+# --- 3. UI ---
+st.title("🏥 Clinical AI: Intelligent Risk & Therapy System")
 st.divider()
 
 col_l, col_r = st.columns([1, 1], gap="large")
@@ -93,8 +119,8 @@ with col_l:
     temp = v2.number_input("Temp °C", value=37.0)
 
 with col_r:
-    st.subheader("📋 Natural Language Symptom Input")
-    s_input = st.text_area("Type symptoms exactly as you feel (e.g. 'I have a bad fever and itchy rash')")
+    st.subheader("📋 Clinical Presentation")
+    s_input = st.text_area("Type symptoms exactly as you feel (e.g. 'bad fever and itchy rash')")
 
 # --- 4. EXECUTION ---
 st.divider()
@@ -116,18 +142,19 @@ if st.button("RUN FULL DIAGNOSTIC & NOTIFY DOCTOR", type="primary", use_containe
 
         # D. Display Report
         st.markdown(f"""<div class="report-container"><h2 style='text-align: center;'>Clinical Diagnostic Report</h2><hr>
-            <p><b>Predicted Condition (Vitals):</b> {dl_disease} ({prob:.2f}%)</p>
-            <p><b>Smart Symptom Detection:</b> {res_disease}</p>
-            <p><b>Triage Urgency:</b> <span style="color: {'red' if urgency != 'Stable' else 'green'}; font-weight: bold;">{urgency}</span></p></div>""", unsafe_allow_html=True)
+            <p><b>Diagnosis (Vitals):</b> {dl_disease} ({prob:.2f}%)</p>
+            <p><b>Symptom Matching:</b> {res_disease}</p>
+            <p><b>Status:</b> <span style="color: {'red' if urgency != 'Stable' else 'green'}; font-weight: bold;">{urgency}</span></p></div>""", unsafe_allow_html=True)
 
-        # E. Therapy
-        meds = get_medication_recs(res_disease if res_disease != "Normal" else dl_disease)
+        # E. Therapy (Now safe from KeyError)
+        query = res_disease if res_disease != "Normal" else dl_disease
+        meds = get_medication_recs(query)
         if meds:
             st.subheader("💊 Recommended Therapy")
             for m in meds: st.markdown(f'<div class="drug-card"><b>{m["Drug_Name"]}</b><br><small>{m["Description"]}</small></div>', unsafe_allow_html=True)
         
         if doc_email:
-            with st.spinner("Emailing alert..."):
+            with st.spinner("Sending alert..."):
                 if send_to_doctor(doc_email, {'name': p_name, 'age': p_age, 'disease': dl_disease, 'prob': f"{prob:.2f}", 'urgency': urgency, 'vitals': raw_v, 'symptom_disease': res_disease}, meds):
-                    st.success("Report sent! ✅")
+                    st.success("Report emailed! ✅")
     else: st.error("Missing Assets.")
