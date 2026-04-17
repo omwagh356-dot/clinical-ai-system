@@ -15,26 +15,81 @@ try:
 except ImportError:
     st.error("⚠️ Missing 'drug_module.py' or 'explain.py' on GitHub.")
 
-# --- 2. KNOWLEDGE BASES ---
-SYMPTOM_DRUGS = {
-    "chest pain": {"rec": "Aspirin (324mg), Nitroglycerin.", "safety": "🚨 CRITICAL: High risk of Heart Attack. Proceed to ER."},
-    "cough": {"rec": "Dextromethorphan or Guaifenesin.", "safety": "⚠️ Avoid suppressants if cough is productive with fever."},
-    "fever": {"rec": "Acetaminophen (650mg) or Ibuprofen.", "safety": "✅ Monitor for stiff neck or confusion."},
-    "cold": {"rec": "Decongestants and Vitamin C.", "safety": "⚠️ Decongestants raise Blood Pressure."},
-    "diarrhea": {"rec": "Loperamide and ORS.", "safety": "⚠️ Do not use if stool is bloody or fever is high."},
-    "headache": {"rec": "Ibuprofen or Naproxen.", "safety": "✅ Seek care if it is the 'worst headache of your life'."},
-    "nausea": {"rec": "Ginger or Ondansetron.", "safety": "⚠️ Persistent vomiting leads to Electrolyte Imbalance."},
-    "shortness of breath": {"rec": "Albuterol or Oxygen.", "safety": "🚨 EMERGENCY: High risk of Respiratory Failure."},
-    "dizziness": {"rec": "Meclizine or hydration.", "safety": "⚠️ Risk of Stroke if slurred speech is present."}
-}
+# --- 2. Adding some databases of medicine and disease symptoms ---
+@st.cache_data
+def load_clinical_data():
+    # Load symptoms dataset
+    symptom_df = pd.read_csv('DiseaseAndSymptoms.csv')
+    
+    # Load medicine dataset
+    med_df = pd.read_csv('Medicine_description.xlsx - Sheet1.csv')
+    
+    # Pre-process symptoms: create a mapping of Disease -> List of Symptoms
+    # This makes searching much faster
+    disease_symptom_map = {}
+    for _, row in symptom_df.iterrows():
+        disease = row['Disease']
+        # Collect all non-null symptoms for this row
+        symptoms = [str(s).strip().replace("_", " ").lower() for s in row[1:] if pd.notna(s)]
+        if disease not in disease_symptom_map:
+            disease_symptom_map[disease] = set(symptoms)
+        else:
+            disease_symptom_map[disease].update(symptoms)
+            
+    return disease_symptom_map, med_df
 
-CLINICAL_DATABASE = {
-    "Infection": {"icon": "🤒", "severity": "High", "drugs": ["Acetaminophen", "Ceftriaxone"], "next_steps": "Blood Cultures, CBC.", "safety": "Monitor for Septic Shock."},
-    "Respiratory Failure": {"icon": "🫁", "severity": "Critical", "drugs": ["Oxygen", "Albuterol"], "next_steps": "ABG, Chest X-Ray.", "safety": "Keep head of bed elevated."},
-    "Hypertension": {"icon": "🩸", "severity": "High", "drugs": ["Lisinopril", "Amlodipine"], "next_steps": "ECG, Urinalysis.", "safety": "Risk of Stroke."},
-    "Normal": {"icon": "✅", "severity": "Stable", "drugs": ["Maintain regimen"], "next_steps": "Routine follow-up.", "safety": "Cleared for standard activity."},
-    "Cardiac Emergency": {"icon": "💔", "severity": "Critical", "drugs": ["Aspirin", "Nitroglycerin"], "next_steps": "12-Lead ECG.", "safety": "Minimize movement."}
-}
+# Call this at the start of your app
+disease_map, medicine_db = load_clinical_data()
+# 3 adding some Symptom based Disease prediction system
+def predict_disease_from_symptoms(user_input_string):
+    user_symptoms = [s.strip().lower() for s in user_input_string.split(",")]
+    scores = {}
+    
+    for disease, symptoms_set in disease_map.items():
+        # Count how many user symptoms match the symptoms for this disease
+        match_count = len(set(user_symptoms).intersection(symptoms_set))
+        if match_count > 0:
+            scores[disease] = match_count
+            
+    if not scores:
+        return "Normal", 0
+    
+    # Return the disease with the highest match count
+    best_match = max(scores, key=scores.get)
+    return best_match, scores[best_match]
+# --- 2. KNOWLEDGE BASES
+#SYMPTOM_DRUGS = {
+ #   "chest pain": {"rec": "Aspirin (324mg), Nitroglycerin.", "safety": "🚨 CRITICAL: High risk of Heart Attack. Proceed to ER."},
+  #  "cough": {"rec": "Dextromethorphan or Guaifenesin.", "safety": "⚠️ Avoid suppressants if cough is productive with fever."},
+   # "fever": {"rec": "Acetaminophen (650mg) or Ibuprofen.", "safety": "✅ Monitor for stiff neck or confusion."},
+    #"cold": {"rec": "Decongestants and Vitamin C.", "safety": "⚠️ Decongestants raise Blood Pressure."},
+    #"diarrhea": {"rec": "Loperamide and ORS.", "safety": "⚠️ Do not use if stool is bloody or fever is high."},
+    #"headache": {"rec": "Ibuprofen or Naproxen.", "safety": "✅ Seek care if it is the 'worst headache of your life'."},
+    #"nausea": {"rec": "Ginger or Ondansetron.", "safety": "⚠️ Persistent vomiting leads to Electrolyte Imbalance."},
+    #"shortness of breath": {"rec": "Albuterol or Oxygen.", "safety": "🚨 EMERGENCY: High risk of Respiratory Failure."},
+    #"dizziness": {"rec": "Meclizine or hydration.", "safety": "⚠️ Risk of Stroke if slurred speech is present."}
+#}
+
+#CLINICAL_DATABASE = {
+   # "Infection": {"icon": "🤒", "severity": "High", "drugs": ["Acetaminophen", "Ceftriaxone"], "next_steps": "Blood Cultures, CBC.", "safety": "Monitor for Septic Shock."},
+   # "Respiratory Failure": {"icon": "🫁", "severity": "Critical", "drugs": ["Oxygen", "Albuterol"], "next_steps": "ABG, Chest X-Ray.", "safety": "Keep head of bed elevated."},
+   # "Hypertension": {"icon": "🩸", "severity": "High", "drugs": ["Lisinopril", "Amlodipine"], "next_steps": "ECG, Urinalysis.", "safety": "Risk of Stroke."},
+  #  "Normal": {"icon": "✅", "severity": "Stable", "drugs": ["Maintain regimen"], "next_steps": "Routine follow-up.", "safety": "Cleared for standard activity."},
+ #   "Cardiac Emergency": {"icon": "💔", "severity": "Critical", "drugs": ["Aspirin", "Nitroglycerin"], "next_steps": "12-Lead ECG.", "safety": "Minimize movement."}
+#}
+# 4 new function for drug recommend
+
+def get_recommendations(disease_name):
+    # Filter the medicine database where "Reason" matches our disease
+    # We use case-insensitive matching
+    recommendations = medicine_db[medicine_db['Reason'].str.contains(disease_name, case=False, na=False)]
+    
+    if recommendations.empty:
+        return []
+    
+    # Return a list of dictionaries with Drug Name and Description
+    return recommendations[['Drug_Name', 'Description']].head(5).to_dict('records')
+
 
 # --- 3. PAGE CONFIG & ASSETS ---
 st.set_page_config(page_title="Clinical AI Portal", page_icon="🏥", layout="wide")
@@ -184,31 +239,27 @@ if st.button("RUN FULL DIAGNOSTIC", type="primary", use_container_width=True):
         st.write("**Reasoning:**", ", ".join(reasons))
         
     with tab2:
-        st.subheader("💊 Symptom-Based Recommendations")
-        user_input = curr_diseases.lower().strip()
-        found_symptom = False
+        st.subheader("🔍 Symptom Analysis & Recommendations")
+    
+        if curr_diseases:
+        # 1. Predict Disease from symptoms entered in the text area
+            predicted_disease, score = predict_disease_from_symptoms(curr_diseases)
         
-        # Only try to map symptoms if the user actually typed something
-        if user_input:
-            for symptom, advice in SYMPTOM_DRUGS.items():
-                if symptom in user_input:
-                    with st.container(border=True):
-                        st.info(f"**For {symptom.capitalize()}:** {advice['rec']}")
-                        st.warning(f"Safety: {advice['safety']}")
-                    found_symptom = True
+            if score > 0:
+                st.info(f"**Detected Condition:** {predicted_disease} (Matches {score} symptoms)")
             
-            if found_symptom:
-                st.divider()
-        
-        # This part will ALWAYS show, even if the symptoms box is empty
-        st.subheader(f"Standard Hospital Protocol for {disease}")
-        st.markdown(f"The following medications and actions are standard for a diagnosis of **{disease}**:")
-        
-        # Create a clean list of the drugs from your CLINICAL_DATABASE
-        for d in info['drugs']:
-            st.success(f"✔️ {d}")
-        
-        st.info(f"**Clinical Pathway:** {info['next_steps']}")
+            # 2. Get real drugs for this condition from your Medicine_description CSV
+                drug_recs = get_recommendations(predicted_disease)
+            
+                if drug_recs:
+                    st.write("### Recommended Medications (from Database)")
+                    for drug in drug_recs:
+                        with st.expander(f"💊 {drug['Drug_Name']}"):
+                            st.write(f"**Description:** {drug['Description']}")
+                else:
+                    st.warning("No specific drugs found in the database for this condition.")
+            else:
+                st.write("Type symptoms (e.g., 'itching, skin rash') to see recommendations.")
 
     with tab3:
         html_report = create_pdf_report(report_data, info, reasons, warnings)
