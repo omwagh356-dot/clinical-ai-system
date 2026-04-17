@@ -26,6 +26,7 @@ def load_ml_assets():
 def load_knowledge_bases():
     """Loads CSVs with robust error handling for encoding and malformed rows."""
     symptom_file = 'DiseaseAndSymptoms.csv'
+    # Updated to the specific filename provided in previous turns
     medicine_file = 'Medicine_description.xlsx'
     
     if not os.path.exists(symptom_file) or not os.path.exists(medicine_file):
@@ -33,10 +34,12 @@ def load_knowledge_bases():
         return {}, pd.DataFrame()
 
     try:
-        # Using engine='python' and on_bad_lines='skip' to fix Buffer Overflow
-        # Using encoding='latin1' to fix the 0xa0 decoding error
+        # engine='python' fixes Buffer Overflow; encoding='latin1' fixes the 0xa0 error
         disease_df = pd.read_csv(symptom_file, encoding='latin1', on_bad_lines='skip', engine='python')
         medicine_db = pd.read_csv(medicine_file, encoding='latin1', on_bad_lines='skip', engine='python')
+        
+        # Normalize column names to avoid KeyErrors due to hidden spaces
+        medicine_db.columns = medicine_db.columns.str.strip()
         
         disease_map = {}
         for _, row in disease_df.iterrows():
@@ -97,14 +100,27 @@ def send_to_doctor(receiver_email, report, drug_list):
     except: return False
 
 def get_medication_recs(disease_name):
-    """Filters medicine database based on the predicted reason."""
+    """Filters medicine database while dynamically identifying the correct column."""
     if not disease_name or medicine_db.empty: return []
-    mask = medicine_db['Reason'].str.contains(disease_name[:5], case=False, na=False)
-    return medicine_db[mask][['Drug_Name', 'Description']].head(5).to_dict('records')
+    
+    # Dynamically find the column that looks like 'Reason' or 'Disease'
+    cols = medicine_db.columns
+    target_col = 'Reason' 
+    if 'Reason' not in cols:
+        possible = [c for c in cols if 'reason' in c.lower() or 'disease' in c.lower()]
+        if possible: target_col = possible[0]
+        else: return []
+
+    mask = medicine_db[target_col].str.contains(disease_name[:5], case=False, na=False)
+    # Ensure columns Drug_Name and Description exist before returning
+    needed = ['Drug_Name', 'Description']
+    available = [c for c in needed if c in medicine_db.columns]
+    return medicine_db[mask][available].head(5).to_dict('records')
 
 # --- 3. UI LAYOUT ---
 
 st.title("🏥 Intelligent Clinical Risk & Therapy System")
+st.caption("M.Sc. Data Science Project - Onkar Suresh Wagh")
 st.divider()
 
 col_l, col_r = st.columns([1, 1])
@@ -135,14 +151,15 @@ with col_r:
         med_recs = get_medication_recs(res_disease)
         if med_recs:
             for m in med_recs:
-                with st.expander(f"Drug: {m['Drug_Name']}"):
-                    st.write(m['Description'])
+                with st.expander(f"Drug: {m.get('Drug_Name', 'N/A')}"):
+                    st.write(m.get('Description', 'No description available.'))
 
 # --- 4. EXECUTION ---
 st.divider()
 if st.button("RUN FULL DIAGNOSTIC & NOTIFY DOCTOR", type="primary", use_container_width=True):
     if model and scaler:
         # Prediction Pipeline
+        # Inputs order: Age, HR, BP_Sys, BP_Dia, SpO2, Temp, Chol, Gluc, Resp
         raw_v = [p_age, hr, bps, 80.0, spo2, temp, 190.0, 95.0, 16.0]
         scaled = scaler.transform([raw_v])
         pred = model.predict(scaled, verbose=0)
@@ -150,7 +167,7 @@ if st.button("RUN FULL DIAGNOSTIC & NOTIFY DOCTOR", type="primary", use_containe
         disease = le.inverse_transform([idx])[0]
         prob = pred[0][idx] * 100
         
-        # Triage logic
+        # Triage logic (Override based on critical vital signs)
         urgency = "IMMEDIATE ER" if spo2 < 90 or bps > 175 else "Stable"
         
         report = {
