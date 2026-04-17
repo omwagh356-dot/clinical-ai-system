@@ -13,29 +13,27 @@ try:
     from drug_module import check_drugs
     from explain import explain_values
 except ImportError:
-    st.error("⚠️ Missing 'drug_module.py' or 'explain.py' on GitHub. Please upload them!")
+    st.error("⚠️ Missing 'drug_module.py' or 'explain.py' on GitHub.")
 
 # --- 2. KNOWLEDGE BASES ---
 SYMPTOM_DRUGS = {
     "chest pain": {"rec": "Aspirin (324mg), Nitroglycerin.", "safety": "🚨 CRITICAL: High risk of Heart Attack. Proceed to ER."},
     "cough": {"rec": "Dextromethorphan or Guaifenesin.", "safety": "⚠️ Avoid suppressants if cough is productive with fever."},
     "fever": {"rec": "Acetaminophen (650mg) or Ibuprofen.", "safety": "✅ Monitor for stiff neck or confusion."},
-    "cold": {"rec": "Decongestants and Vitamin C.", "safety": "⚠️ Decongestants raise Blood Pressure. Use caution."},
+    "cold": {"rec": "Decongestants and Vitamin C.", "safety": "⚠️ Decongestants raise Blood Pressure."},
     "diarrhea": {"rec": "Loperamide and ORS.", "safety": "⚠️ Do not use if stool is bloody or fever is high."},
     "headache": {"rec": "Ibuprofen or Naproxen.", "safety": "✅ Seek care if it is the 'worst headache of your life'."},
     "nausea": {"rec": "Ginger or Ondansetron.", "safety": "⚠️ Persistent vomiting leads to Electrolyte Imbalance."},
     "shortness of breath": {"rec": "Albuterol or Oxygen.", "safety": "🚨 EMERGENCY: High risk of Respiratory Failure."},
-    "dizziness": {"rec": "Meclizine or hydration.", "safety": "⚠️ Risk of Stroke if slurred speech is present."},
-    "abdominal pain": {"rec": "Antacids.", "safety": "⚠️ Avoid heating pads if pain is sharp in lower right."},
-    "allergic reaction": {"rec": "Antihistamine or Epinephrine.", "safety": "🚨 CRITICAL: Use Epi-Pen if throat feels tight."}
+    "dizziness": {"rec": "Meclizine or hydration.", "safety": "⚠️ Risk of Stroke if slurred speech is present."}
 }
 
 CLINICAL_DATABASE = {
-    "Infection": {"icon": "🤒", "severity": "High", "drugs": ["Acetaminophen", "Ceftriaxone", "IV Saline"], "next_steps": "Blood Cultures, CBC, Lactic Acid check.", "safety": "Monitor for Septic Shock."},
-    "Respiratory Failure": {"icon": "🫁", "severity": "Critical", "drugs": ["Oxygen", "Albuterol", "Steroids"], "next_steps": "ABG, Chest X-Ray, Intubation Eval.", "safety": "Keep head of bed elevated."},
-    "Hypertension": {"icon": "🩸", "severity": "High", "drugs": ["Lisinopril", "Amlodipine"], "next_steps": "ECG, Urinalysis, BP monitoring.", "safety": "Risk of Stroke. Avoid sudden movement."},
-    "Normal": {"icon": "✅", "severity": "Stable", "drugs": ["Maintain regimen"], "next_steps": "Routine 6-month follow-up.", "safety": "Cleared for standard activity."},
-    "Cardiac Emergency": {"icon": "💔", "severity": "Critical", "drugs": ["Aspirin", "Nitroglycerin", "Morphine"], "next_steps": "12-Lead ECG, Troponin levels.", "safety": "Minimize all movement. Prepare for ACLS."}
+    "Infection": {"icon": "🤒", "severity": "High", "drugs": ["Acetaminophen", "Ceftriaxone"], "next_steps": "Blood Cultures, CBC.", "safety": "Monitor for Septic Shock."},
+    "Respiratory Failure": {"icon": "🫁", "severity": "Critical", "drugs": ["Oxygen", "Albuterol"], "next_steps": "ABG, Chest X-Ray.", "safety": "Keep head of bed elevated."},
+    "Hypertension": {"icon": "🩸", "severity": "High", "drugs": ["Lisinopril", "Amlodipine"], "next_steps": "ECG, Urinalysis.", "safety": "Risk of Stroke."},
+    "Normal": {"icon": "✅", "severity": "Stable", "drugs": ["Maintain regimen"], "next_steps": "Routine follow-up.", "safety": "Cleared for standard activity."},
+    "Cardiac Emergency": {"icon": "💔", "severity": "Critical", "drugs": ["Aspirin", "Nitroglycerin"], "next_steps": "12-Lead ECG.", "safety": "Minimize movement."}
 }
 
 # --- 3. PAGE CONFIG & ASSETS ---
@@ -50,25 +48,20 @@ def load_assets():
 
 model, scaler, label_encoder = load_assets()
 
-# --- 4. CORE FUNCTIONS (PDF & EMAIL) ---
+# --- 4. CORE FUNCTIONS ---
 def create_pdf_report(report_data, info, reasons, safety_warnings):
     html_content = f"""
     <div style="font-family: Arial; padding: 20px; border: 2px solid #333;">
         <h1 style="color: #1a73e8; text-align: center;">Clinical AI Diagnostic Report</h1>
         <hr>
-        <p><b>Patient:</b> {report_data['Name']} | <b>Age:</b> {report_data['Age']} | <b>Gender:</b> {report_data['Gender']}</p>
+        <p><b>PATIENT NAME:</b> {report_data['Name']}</p>
+        <p><b>AGE:</b> {report_data['Age']} | <b>GENDER:</b> {report_data['Gender']}</p>
         <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
             <p><b>Prediction:</b> {report_data['Disease']} ({report_data['Prob']}%)</p>
             <p><b>Urgency:</b> {report_data['Urgency']}</p>
         </div>
-        <h3>Reported Symptoms & Conditions</h3>
-        <p>{report_data['Symptoms']}</p>
-        <h3>Vitals Analysis</h3>
+        <h3>Analysis & Safety</h3>
         <ul>{"".join([f"<li>🚩 {r}</li>" for r in reasons])}</ul>
-        <h3>Drug Safety Warnings</h3>
-        <ul>{"".join([f"<li>⚠️ {w}</li>" for w in safety_warnings]) if safety_warnings else "<li>None flagged</li>"}</ul>
-        <h3>Protocol</h3>
-        <p><b>Next Steps:</b> {info['next_steps']}</p>
         <p><b>Meds:</b> {", ".join(info['drugs'])}</p>
     </div>
     """
@@ -80,7 +73,7 @@ def send_to_doctor(receiver_email, report, reasons, safety_warnings):
     msg['From'] = st.secrets["EMAIL_USER"]
     msg['To'] = receiver_email
     
-   body = f"""
+    body = f"""
     OFFICIAL CLINICAL REPORT
     -------------------------------
     PATIENT DETAILS:
@@ -118,7 +111,7 @@ col_left, col_right = st.columns([1, 1])
 
 with col_left:
     st.subheader("👤 Patient Identity")
-    name = st.text_input("Patient Name")
+    name = st.text_input("Full Name (Patient)")
     doc_email = st.text_input("Doctor's Email")
     g_col, a_col = st.columns(2)
     gender = g_col.selectbox("Gender", ["Male", "Female", "Other"])
@@ -163,10 +156,23 @@ if st.button("RUN FULL DIAGNOSTIC", type="primary", use_container_width=True):
     if spo2 < 90 or temp > 39.5 or bps >= 180:
         risk, urgency = "High", "IMMEDIATE ER VISIT REQUIRED"
 
-    # Get Database Info & Drug Checks
+    # Data Processing
     info = CLINICAL_DATABASE.get(disease, CLINICAL_DATABASE["Normal"])
     reasons = explain_values(hr, (bps+bpd)/2, spo2, temp)
     warnings, _ = check_drugs(curr_drugs.split(","), curr_diseases.split(","), curr_allergies.split(","))
+
+    # Unified Report Data
+    report_data = {
+        "Name": name if name else "Unknown Patient",
+        "Age": age,
+        "Gender": gender,
+        "Disease": disease,
+        "Prob": f"{prob:.2f}",
+        "Risk": risk,
+        "Urgency": urgency,
+        "Symptoms": curr_diseases if curr_diseases else "None reported",
+        "vitals": inputs_raw
+    }
 
     # UI Result Display
     st.header(f"{info['icon']} Diagnosis: {disease}")
@@ -178,37 +184,23 @@ if st.button("RUN FULL DIAGNOSTIC", type="primary", use_container_width=True):
         st.write("**Reasoning:**", ", ".join(reasons))
         
     with tab2:
-        st.subheader("💊 Symptom-Based Recommendations")
+        st.subheader("💊 Symptom Recommendations")
         user_input = curr_diseases.lower()
-        found_symptom = False
-        for symptom, advice in SYMPTOM_DRUGS.items():
-            if symptom in user_input:
-                st.markdown(f"### For {symptom.capitalize()}:")
-                st.success(f"**Recommended:** {advice['rec']}")
-                st.warning(f"**Safety Check:** {advice['safety']}")
-                found_symptom = True
-                st.divider()
-        if not found_symptom:
-            st.info("Enter symptoms in the Known Conditions box for specific drug advice.")
+        found = False
+        for sym, adv in SYMPTOM_DRUGS.items():
+            if sym in user_input:
+                st.info(f"**For {sym.capitalize()}:** {adv['rec']}")
+                st.warning(f"Safety: {adv['safety']}")
+                found = True
+        if not found: st.info("No specific symptoms detected.")
 
-        st.subheader(f"Standard Protocol for {disease}")
-        for d in info['drugs']: st.write(f"- {d}")
-        
     with tab3:
-        report_data = {
-            "Name": name, "Age": age, "Gender": gender, "Disease": disease, 
-            "Prob": f"{prob:.2f}", "Risk": risk, "Urgency": urgency, 
-            "Symptoms": curr_diseases, "vitals": inputs_raw
-        }
-        
-        # HTML Report Generation
         html_report = create_pdf_report(report_data, info, reasons, warnings)
         st.download_button("Download Medical Report (HTML)", data=html_report, file_name=f"Report_{name}.html", mime="text/html", use_container_width=True)
 
-        # Email Transfer
         if doc_email:
-            with st.spinner("Sending report to doctor..."):
+            with st.spinner("Emailing doctor..."):
                 if send_to_doctor(doc_email, report_data, reasons, warnings):
-                    st.success("Report Transmitted Successfully! ✅")
+                    st.success(f"Report for {name} sent to {doc_email}! ✅")
                 else:
-                    st.error("Email transmission failed. Check your Secrets.")
+                    st.error("Email failed. Check your Secrets.")
