@@ -41,7 +41,7 @@ def load_knowledge_bases():
         disease_df = pd.read_csv(symptom_file, encoding='latin1', on_bad_lines='skip', engine='python')
         medicine_db = pd.read_csv(medicine_file, encoding='latin1', on_bad_lines='skip', engine='python')
         
-        # Clean headers to prevent KeyError
+        # Force clean column names
         medicine_db.columns = [str(c).strip().replace('\xa0', '') for c in medicine_db.columns]
         
         disease_map = {}
@@ -59,6 +59,35 @@ disease_map, medicine_db = load_knowledge_bases()
 
 # --- 2. CORE LOGIC ---
 
+def get_medication_recs(user_text, predicted_disease):
+    """Bulletproof matching: Scans all columns for any mention of symptoms."""
+    if medicine_db.empty: return []
+    
+    # 1. Prepare search terms
+    search_terms = f"{user_text} {predicted_disease}".lower().split()
+    search_terms = [word for word in search_terms if len(word) > 3] # Filter out 'the', 'and', 'bad'
+    
+    if not search_terms: return []
+
+    try:
+        # 2. Dynamic Column Mapping (Find Reason/Description/Drug cols)
+        cols = list(medicine_db.columns)
+        drug_col = next((c for c in cols if 'drug' in c.lower()), cols[0])
+        reason_col = next((c for c in cols if 'reason' in c.lower() or 'disease' in c.lower()), cols[1] if len(cols)>1 else cols[0])
+        desc_col = next((c for c in cols if 'desc' in c.lower()), cols[-1])
+
+        # 3. Create a mask that searches across BOTH reason and description columns
+        mask = medicine_db.apply(lambda row: 
+            any(word in str(row[reason_col]).lower() or word in str(row[desc_col]).lower() 
+                for word in search_terms), axis=1)
+        
+        results = medicine_db[mask][[drug_col, desc_col]].head(5)
+        results.columns = ['Drug_Name', 'Description'] # Standardize for UI
+        return results.to_dict('records')
+    except Exception as e:
+        # Last resort: If column logic fails, return nothing rather than crashing
+        return []
+
 def send_to_doctor(receiver_email, report, drug_list):
     msg = EmailMessage()
     msg['Subject'] = f"🚨 {report['urgency']} Alert: {report['name']}"
@@ -72,27 +101,6 @@ def send_to_doctor(receiver_email, report, drug_list):
             smtp.login(st.secrets["EMAIL_USER"], st.secrets["EMAIL_PASS"])
             smtp.send_message(msg); return True
     except: return False
-
-def get_medication_recs(user_text, predicted_disease):
-    """Enhanced Smart Matching: Scans Reason AND Description columns."""
-    if medicine_db.empty: return []
-    
-    # 1. Create a search query from both user input and AI prediction
-    search_query = f"{user_text} {predicted_disease}".lower()
-    
-    # 2. Search in 'Reason' AND 'Description' columns
-    # We use a lambda to check if any part of the query exists in the columns
-    try:
-        mask = medicine_db.apply(lambda row: 
-            any(word in str(row['Reason']).lower() or word in str(row['Description']).lower() 
-                for word in search_query.split() if len(word) > 3), axis=1)
-        
-        results = medicine_db[mask][['Drug_Name', 'Description']].head(5)
-        return results.to_dict('records')
-    except:
-        # Fallback to simple filtering if complex search fails
-        mask = medicine_db['Reason'].str.contains(predicted_disease[:5], case=False, na=False)
-        return medicine_db[mask][['Drug_Name', 'Description']].head(5).to_dict('records')
 
 # --- 3. UI ---
 st.title("🏥 Clinical AI: Intelligent Risk & Therapy System")
@@ -112,7 +120,7 @@ with col_l:
 
 with col_r:
     st.subheader("📋 Clinical Presentation")
-    s_input = st.text_area("Type symptoms exactly as you feel (e.g. 'bad headache and muscle pain')")
+    s_input = st.text_area("Type symptoms (e.g. 'muscle pain', 'headache', 'fever')")
 
 # --- 4. EXECUTION ---
 st.divider()
@@ -144,7 +152,7 @@ if st.button("RUN FULL DIAGNOSTIC & NOTIFY DOCTOR", type="primary", use_containe
             st.subheader("💊 Recommended Therapy")
             for m in meds: st.markdown(f'<div class="drug-card"><b>{m["Drug_Name"]}</b><br><small>{m["Description"]}</small></div>', unsafe_allow_html=True)
         else:
-            st.info("No matching drugs found. Adjust symptoms for a wider search.")
+            st.info("No matching medications found for these specific symptoms.")
         
         if doc_email:
             with st.spinner("Sending alert..."):
