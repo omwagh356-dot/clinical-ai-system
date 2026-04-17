@@ -183,7 +183,7 @@ if st.button("RUN FULL DIAGNOSTIC", type="primary", use_container_width=True):
         st.write(f"**Urgency:** {urgency}")
         st.write("**Reasoning:**", ", ".join(reasons))
         
-with tab2:
+    with tab2:
         st.subheader("💊 Symptom-Based Recommendations")
         user_input = curr_diseases.lower().strip()
         found_symptom = False
