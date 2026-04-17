@@ -10,46 +10,42 @@ from tensorflow.keras.models import load_model
 # --- 1. CONFIG & ASSETS LOADING ---
 st.set_page_config(page_title="Clinical AI Portal", layout="wide", page_icon="🏥")
 
-# Professional Custom Styling to match the "vibe"
+# Theme-neutral CSS for Dark/Light mode visibility
 st.markdown("""
     <style>
-    .main { background-color: #f5f7f9; }
-    .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #1a73e8; color: white; }
-    .report-card { border: 2px solid #1a73e8; padding: 20px; border-radius: 10px; background-color: white; }
+    .report-container { border: 2px solid #1a73e8; padding: 20px; border-radius: 10px; margin-top: 20px; color: inherit; }
+    .drug-card { background-color: rgba(26, 115, 232, 0.1); border-left: 5px solid #1a73e8; padding: 10px; margin-bottom: 10px; border-radius: 5px; }
     </style>
     """, unsafe_allow_html=True)
 
 @st.cache_resource
 def load_ml_assets():
-    """Loads Deep Learning model and pre-processing scalers."""
+    """Loads Deep Learning assets."""
     try:
         model = load_model("model/model.h5")
         scaler = joblib.load("scaler.pkl")
         le = joblib.load("label_encoder.pkl")
         return model, scaler, le
     except Exception as e:
-        st.warning(f"ML Assets (model.h5/scaler.pkl) not found: {e}")
+        st.warning(f"ML Assets not found: {e}")
         return None, None, None
 
 @st.cache_data
 def load_knowledge_bases():
-    """Loads CSVs with robust error handling for encoding and malformed rows."""
+    """Loads CSVs with robust error handling for encoding."""
     symptom_file = 'DiseaseAndSymptoms.csv'
     medicine_file = 'Medicine_description.xlsx'
     
     if not os.path.exists(symptom_file) or not os.path.exists(medicine_file):
-        st.error("❌ Critical Error: CSV files missing from project directory.")
+        st.error("❌ Critical Error: CSV files missing.")
         return {}, pd.DataFrame()
 
     try:
-        # engine='python' handles messy rows; encoding='latin1' handles Excel characters
+        # engine='python' handles malformed rows; encoding='latin1' handles 0xa0 characters
         disease_df = pd.read_csv(symptom_file, encoding='latin1', on_bad_lines='skip', engine='python')
         medicine_db = pd.read_csv(medicine_file, encoding='latin1', on_bad_lines='skip', engine='python')
-        
-        # Normalize columns (remove hidden spaces)
         medicine_db.columns = medicine_db.columns.str.strip()
         
-        # Map: {Disease: {symptom set}}
         disease_map = {}
         for _, row in disease_df.iterrows():
             d = str(row['Disease']).strip()
@@ -63,67 +59,28 @@ def load_knowledge_bases():
         st.error(f"Database Loading Error: {e}")
         return {}, pd.DataFrame()
 
-# Initialize Global Assets
+# Initialize
 model, scaler, le = load_ml_assets()
 disease_map, medicine_db = load_knowledge_bases()
 
 # --- 2. CORE LOGIC FUNCTIONS ---
 
-def get_medication_recs(disease_name):
-    """Filters medicine database while dynamically identifying the correct column."""
-    if not disease_name or medicine_db.empty: return []
-    
-    # Smart search for 'Reason' or 'Disease' column
+def get_medication_recs(search_term):
+    """Filters medicine database using the predicted disease or condition."""
+    if not search_term or medicine_db.empty: return []
     cols = medicine_db.columns
     target_col = 'Reason' 
     if 'Reason' not in cols:
         possible = [c for c in cols if 'reason' in c.lower() or 'disease' in c.lower()]
         if possible: target_col = possible[0]
         else: return []
-
-    mask = medicine_db[target_col].str.contains(disease_name[:5], case=False, na=False)
-    # Return Top 5 matches with cleaned names
+    
+    mask = medicine_db[target_col].str.contains(search_term[:5], case=False, na=False)
     return medicine_db[mask][['Drug_Name', 'Description']].head(5).to_dict('records')
 
-def send_to_doctor(receiver_email, report, drug_list):
-    """Sends a detailed clinical alert email."""
-    msg = EmailMessage()
-    msg['Subject'] = f"🚨 {report['urgency']} Alert: {report['name']}"
-    msg['From'] = st.secrets["EMAIL_USER"]
-    msg['To'] = receiver_email
-    
-    med_text = "\n".join([f"- {m['Drug_Name']}: {m['Description'][:100]}..." for m in drug_list])
-    
-    body = f"""
-    CLINICAL DIAGNOSTIC SUMMARY
-    ---------------------------
-    PATIENT: {report['name']} ({report['age']} years)
-    URGENCY: {report['urgency']}
-    
-    AI PREDICTION:
-    - Result: {report['disease']}
-    - Confidence: {report['prob']}%
-    
-    SYMPTOM ANALYSIS:
-    - Likely Condition: {report['symptom_disease']}
-    
-    RECOMMENDED THERAPY:
-    {med_text if med_text else "No drugs identified."}
-    ---------------------------
-    Generated via Clinical AI Decision Support.
-    """
-    msg.set_content(body)
-    try:
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-            smtp.login(st.secrets["EMAIL_USER"], st.secrets["EMAIL_PASS"])
-            smtp.send_message(msg)
-        return True
-    except: return False
-
 # --- 3. UI LAYOUT ---
-
-st.title("🏥 Clinical AI: Intelligent Risk & Therapy Engine")
-st.caption("Final Year Project - Onkar Suresh Wagh")
+st.title("🏥 Intelligent Clinical Risk & Therapy System")
+st.caption("Onkar Suresh Wagh - Master of Science Data Science 2026 [cite: 17]")
 st.divider()
 
 col_l, col_r = st.columns([1, 1], gap="large")
@@ -131,10 +88,8 @@ col_l, col_r = st.columns([1, 1], gap="large")
 with col_l:
     st.subheader("👤 Patient Identity & Vitals")
     p_name = st.text_input("Patient Full Name")
-    doc_email = st.text_input("Doctor's Email for Alerts")
+    doc_email = st.text_input("Doctor Email for Alerts")
     p_age = st.number_input("Age", 1, 120, 30)
-    
-    st.write("**Real-time Vitals:**")
     v1, v2 = st.columns(2)
     hr = v1.number_input("Heart Rate", value=72.0)
     spo2 = v2.number_input("SpO2 %", value=98.0)
@@ -142,59 +97,55 @@ with col_l:
     temp = v2.number_input("Temp °C", value=37.0)
 
 with col_r:
-    st.subheader("📋 Symptom-Based Therapy Recommendation")
-    s_input = st.text_area("Enter Symptoms (e.g. skin rash, itching, nodal skin eruptions)", height=100)
-    
-    if s_input:
-        # 1. Process Symptoms immediately when user types
-        user_s = [s.strip().lower() for s in s_input.split(",")]
-        scores = {d: len(set(user_s).intersection(s_set)) for d, s_set in disease_map.items()}
-        res_disease = max(scores, key=scores.get, default=None) if any(scores.values()) else None
-        
-        if res_disease:
-            st.success(f"**Detected Condition:** {res_disease}")
-            
-            # 2. Get and display Medicine Recommendation instantly
-            st.write("### 💊 Therapy Recommendations")
-            med_recs = get_medication_recs(res_disease)
-            if med_recs:
-                for m in med_recs:
-                    with st.expander(f"Drug Name: {m['Drug_Name']}", expanded=True):
-                        st.info(f"**Indication:** {m['Description']}")
-            else:
-                st.warning("Condition detected, but no specific drugs found in database.")
-        else:
-            st.info("Start typing symptoms to detect conditions and therapy.")
+    st.subheader("📋 Known Condition / Symptoms")
+    s_input = st.text_area("Enter Symptoms", placeholder="e.g. skin rash, chest pain")
 
-# --- 4. DEEP LEARNING EXECUTION ---
+# --- 4. INTEGRATED EXECUTION ---
 st.divider()
-if st.button("RUN FULL DIAGNOSTIC & NOTIFY DOCTOR"):
+if st.button("RUN FULL DIAGNOSTIC & RECOMMEND THERAPY", type="primary", use_container_width=True):
     if model and scaler:
-        # Vitals Prediction
+        # A. Process Vitals through Deep Learning Engine [cite: 215, 356]
         raw_v = [p_age, hr, bps, 80.0, spo2, temp, 190.0, 95.0, 16.0]
         scaled = scaler.transform([raw_v])
         pred = model.predict(scaled, verbose=0)
         idx = np.argmax(pred)
-        disease = le.inverse_transform([idx])[0]
+        dl_disease = le.inverse_transform([idx])[0]
         prob = pred[0][idx] * 100
         
-        # Triage logic
-        urgency = "IMMEDIATE ER" if spo2 < 90 or bps > 175 else "Stable"
+        # B. Process Symptoms through Rule-Based Engine [cite: 405, 463]
+        user_s = [s.strip().lower() for s in s_input.split(",")] if s_input else []
+        scores = {d: len(set(user_s).intersection(s_set)) for d, s_set in disease_map.items()}
+        symptom_disease = max(scores, key=scores.get, default=None) if any(scores.values()) else "Normal"
         
-        # Visual Report Card
+        # C. Triage Urgency
+        urgency = "IMMEDIATE ER" if spo2 < 90 or bps > 175 else "Stable"
+
+        # D. Combined Diagnosis Display [cite: 509]
         st.markdown(f"""
-            <div class="report-card">
-                <h3>Clinical AI Diagnostic Result</h3>
-                <p><b>Diagnosis:</b> {disease} ({prob:.2f}%)</p>
-                <p><b>Status:</b> {urgency}</p>
-                <p><b>Patient:</b> {p_name if p_name else 'Unknown'}</p>
+            <div class="report-container">
+                <h2>Clinical Diagnostic Result</h2>
+                <hr>
+                <p><b>Deep Learning Prediction (from Vitals):</b> {dl_disease} ({prob:.2f}%)</p>
+                <p><b>Symptom Matching Result:</b> {symptom_disease}</p>
+                <p><b>Triage Urgency:</b> <span style="color: {'red' if urgency != 'Stable' else 'green'};">{urgency}</span></p>
             </div>
             """, unsafe_allow_html=True)
+
+        # E. Therapy Recommendations based on Vitals-Prediction [cite: 466]
+        st.subheader("💊 Vitals-Based Recommended Therapy")
+        # We prioritize recommending drugs for the disease predicted from vitals
+        vitals_meds = get_medication_recs(dl_disease)
         
-        if doc_email:
-            with st.spinner("Sending clinical alert..."):
-                meds_for_email = get_medication_recs(res_disease) if 'res_disease' in locals() and res_disease else []
-                if send_to_doctor(doc_email, {'name': p_name, 'age': p_age, 'disease': disease, 'prob': f"{prob:.2f}", 'urgency': urgency, 'vitals': raw_v, 'symptom_disease': res_disease if 'res_disease' in locals() else "None"}, meds_for_email):
-                    st.success(f"Report sent to {doc_email}! ✅")
+        if vitals_meds:
+            for m in vitals_meds:
+                st.markdown(f"""
+                    <div class="drug-card">
+                        <b>{m['Drug_Name']}</b><br>
+                        <i>Indication: {m['Description']}</i>
+                    </div>
+                    """, unsafe_allow_html=True)
+        else:
+            st.warning("No specific medications found for the predicted vital-sign condition.")
+            
     else:
         st.error("Deep Learning Assets Missing.")
