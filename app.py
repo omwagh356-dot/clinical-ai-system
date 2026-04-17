@@ -41,7 +41,7 @@ def load_knowledge_bases():
         disease_df = pd.read_csv(symptom_file, encoding='latin1', on_bad_lines='skip', engine='python')
         medicine_db = pd.read_csv(medicine_file, encoding='latin1', on_bad_lines='skip', engine='python')
         
-        # AGGRESSIVE CLEANING: Strip all whitespace and invisible chars from headers
+        # Clean headers to prevent KeyError
         medicine_db.columns = [str(c).strip().replace('\xa0', '') for c in medicine_db.columns]
         
         disease_map = {}
@@ -73,34 +73,26 @@ def send_to_doctor(receiver_email, report, drug_list):
             smtp.send_message(msg); return True
     except: return False
 
-def get_medication_recs(search_term):
-    if not search_term or medicine_db.empty: return []
+def get_medication_recs(user_text, predicted_disease):
+    """Enhanced Smart Matching: Scans Reason AND Description columns."""
+    if medicine_db.empty: return []
     
-    # AGGRESSIVE COLUMN SEARCH
-    cols = list(medicine_db.columns)
-    # 1. Look for 'Reason' exactly
-    if 'Reason' in cols: target_col = 'Reason'
-    # 2. Look for anything containing 'reason' or 'disease'
-    else:
-        possible = [c for c in cols if 'reason' in c.lower() or 'disease' in c.lower()]
-        target_col = possible[0] if possible else None
-
-    if not target_col:
-        return []
-
+    # 1. Create a search query from both user input and AI prediction
+    search_query = f"{user_text} {predicted_disease}".lower()
+    
+    # 2. Search in 'Reason' AND 'Description' columns
+    # We use a lambda to check if any part of the query exists in the columns
     try:
-        mask = medicine_db[target_col].astype(str).str.contains(search_term[:5], case=False, na=False)
-        # Ensure 'Drug_Name' and 'Description' are also stripped/found
-        d_name_col = [c for c in cols if 'drug' in c.lower()][0] if any('drug' in c.lower() for c in cols) else cols[0]
-        desc_col = [c for c in cols if 'desc' in c.lower()][1 if 'desc' in cols[0].lower() else 0] # fallback
-        if 'Description' in cols: desc_col = 'Description'
-
-        results = medicine_db[mask][[d_name_col, desc_col]].head(5)
-        # Rename to consistent keys for UI
-        results.columns = ['Drug_Name', 'Description']
+        mask = medicine_db.apply(lambda row: 
+            any(word in str(row['Reason']).lower() or word in str(row['Description']).lower() 
+                for word in search_query.split() if len(word) > 3), axis=1)
+        
+        results = medicine_db[mask][['Drug_Name', 'Description']].head(5)
         return results.to_dict('records')
     except:
-        return []
+        # Fallback to simple filtering if complex search fails
+        mask = medicine_db['Reason'].str.contains(predicted_disease[:5], case=False, na=False)
+        return medicine_db[mask][['Drug_Name', 'Description']].head(5).to_dict('records')
 
 # --- 3. UI ---
 st.title("🏥 Clinical AI: Intelligent Risk & Therapy System")
@@ -120,7 +112,7 @@ with col_l:
 
 with col_r:
     st.subheader("📋 Clinical Presentation")
-    s_input = st.text_area("Type symptoms exactly as you feel (e.g. 'bad fever and itchy rash')")
+    s_input = st.text_area("Type symptoms exactly as you feel (e.g. 'bad headache and muscle pain')")
 
 # --- 4. EXECUTION ---
 st.divider()
@@ -132,26 +124,27 @@ if st.button("RUN FULL DIAGNOSTIC & NOTIFY DOCTOR", type="primary", use_containe
         pred = model.predict(scaled, verbose=0)
         idx = np.argmax(pred); dl_disease = le.inverse_transform([idx])[0]; prob = pred[0][idx] * 100
         
-        # B. Smart Symptom Engine
+        # B. Smart Symptom Matcher
         user_text = s_input.lower()
         matched_scores = {d: sum(1 for sym in s_set if sym in user_text) for d, s_set in disease_map.items()}
-        res_disease = max(matched_scores, key=matched_scores.get, default="Normal") if any(matched_scores.values()) else "Normal"
+        res_disease = max(matched_scores, key=matched_scores.get, default="General Condition") if any(matched_scores.values()) else "General Condition"
         
         # C. Triage
         urgency = "IMMEDIATE ER" if spo2 < 90 or bps > 175 or temp >= 39.5 else "Stable"
 
         # D. Display Report
         st.markdown(f"""<div class="report-container"><h2 style='text-align: center;'>Clinical Diagnostic Report</h2><hr>
-            <p><b>Diagnosis (Vitals):</b> {dl_disease} ({prob:.2f}%)</p>
-            <p><b>Symptom Matching:</b> {res_disease}</p>
+            <p><b>AI Diagnosis (Vitals):</b> {dl_disease} ({prob:.2f}%)</p>
+            <p><b>Symptom Detection:</b> {res_disease}</p>
             <p><b>Status:</b> <span style="color: {'red' if urgency != 'Stable' else 'green'}; font-weight: bold;">{urgency}</span></p></div>""", unsafe_allow_html=True)
 
-        # E. Therapy (Now safe from KeyError)
-        query = res_disease if res_disease != "Normal" else dl_disease
-        meds = get_medication_recs(query)
+        # E. Therapy (Searching Reason and Description)
+        meds = get_medication_recs(s_input, dl_disease)
         if meds:
             st.subheader("💊 Recommended Therapy")
             for m in meds: st.markdown(f'<div class="drug-card"><b>{m["Drug_Name"]}</b><br><small>{m["Description"]}</small></div>', unsafe_allow_html=True)
+        else:
+            st.info("No matching drugs found. Adjust symptoms for a wider search.")
         
         if doc_email:
             with st.spinner("Sending alert..."):
