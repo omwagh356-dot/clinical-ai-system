@@ -32,10 +32,9 @@ def load_ml_assets():
 
 @st.cache_data
 def load_knowledge_bases():
-    # AUTO-DETECT FILENAMES to prevent naming errors
     files = os.listdir('.')
-    sym_file = next((f for f in files if "DiseaseAndSymptoms" in f and f.endswith('.csv')), 'DiseaseAndSymptoms.csv')
-    med_file = next((f for f in files if "Medicine_description" in f and f.endswith('.csv')), 'Medicine_description.csv')
+    sym_file = next((f for f in files if "DiseaseAndSymptoms" in f), 'DiseaseAndSymptoms.csv')
+    med_file = next((f for f in files if "Medicine_description" in f), 'Medicine_description.xlsx')
     
     try:
         disease_df = pd.read_csv(sym_file, encoding='latin1')
@@ -45,7 +44,6 @@ def load_knowledge_bases():
         disease_map = {}
         for _, row in disease_df.iterrows():
             d = str(row['Disease']).strip()
-            # Clean symptoms: lowercase and replace underscores with spaces
             s = [str(val).strip().lower().replace("_", " ") for val in row[1:] if pd.notna(val)]
             if d not in disease_map: disease_map[d] = set(s)
             else: disease_map[d].update(s)
@@ -55,34 +53,36 @@ def load_knowledge_bases():
 model_assets = load_ml_assets()
 disease_map, medicine_db = load_knowledge_bases()
 
-# --- 3. NLP & UTILITY FUNCTIONS ---
-
-def clean_and_tokenize(text):
-    """Filters out stop words and keeps only clinical tokens."""
-    stop_words = {'i', 'have', 'having', 'with', 'a', 'the', 'is', 'am', 'are', 'feeling', 'symptoms', 'of', 'and', 'my', 'in', 'some', 'very', 'bad'}
+# --- 3. NLP & EMAIL FUNCTIONS ---
+def get_clean_tokens(text):
+    stop_words = {'i', 'am', 'have', 'having', 'with', 'a', 'the', 'is', 'feeling', 'symptoms', 'of', 'and', 'my', 'in', 'very', 'bad'}
     text = text.lower()
-    text = re.sub(r'[^\w\s]', '', text) # Remove punctuation
-    tokens = text.split()
-    return [w for w in tokens if w not in stop_words]
+    text = re.sub(r'[^\w\s]', '', text)
+    return [w for w in text.split() if w not in stop_words]
 
-def get_medication_recs(conditions):
-    if medicine_db.empty or not conditions: return []
-    matches = []
-    cols = list(medicine_db.columns)
-    for cond in conditions:
-        if not cond or cond in ["Normal", "General Assessment"]: continue
-        mask = medicine_db[cols[1]].astype(str).str.contains(str(cond), case=False, na=False)
-        for _, row in medicine_db[mask].head(3).iterrows():
-            matches.append({'name': row[cols[0]], 'desc': row[cols[2]], 'for': cond})
-    return matches
-
-def send_to_doctor(receiver_email, report_data, meds):
+def send_clinical_alert(receiver_email, report_data, meds):
     msg = EmailMessage()
     msg['Subject'] = f"🚨 {report_data['urgency']} Alert: {report_data['name']}"
-    msg['From'] = st.secrets.get("EMAIL_USER", "alert@clinical-ai.com")
+    msg['From'] = st.secrets.get("EMAIL_USER", "clinical-ai@alert.com")
     msg['To'] = receiver_email
-    med_text = "\n".join([f"- {m['name']} (for {m['for']})" for m in meds])
-    body = f"Patient: {report_data['name']}\nAge: {report_data['age']}\nVitals Diag: {report_data['v_diag']}\nSymptom Diag: {report_data['s_diag']}\nStatus: {report_data['urgency']}\n\nTherapy:\n{med_text}"
+    
+    med_text = "\n".join([f"- {m['name']} (Target: {m['for']})" for m in meds])
+    body = f"""
+    CLINICAL DIAGNOSTIC ALERT
+    -------------------------
+    Patient Name: {report_data['name']}
+    Age: {report_data['age']}
+    
+    DIAGNOSIS:
+    - Vitals AI: {report_data['v_diag']}
+    - Symptom Detection: {report_data['s_diag']}
+    - Urgency Status: {report_data['urgency']}
+    
+    SUGGESTED THERAPY:
+    {med_text if meds else "No specific medications suggested."}
+    
+    This is an automated report from the Clinical AI Portal.
+    """
     msg.set_content(body)
     try:
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
@@ -106,81 +106,45 @@ with col_l:
     v1, v2 = st.columns(2)
     hr = v1.number_input("Heart Rate (BPM)", 72.0)
     spo2 = v2.number_input("SpO2 (%)", 98.0)
-    bps = v1.number_input("Blood Pressure (Systolic)", 120.0)
+    bps = v1.number_input("BP Systolic (mmHg)", 120.0)
     temp = v2.number_input("Temperature (°C)", 37.0)
 
 with col_r:
     st.subheader("📋 Clinical Presentation")
-    s_input = st.text_area("Describe Symptoms (e.g., 'I have joint stiffness and pain')")
-    doc_email = st.text_input("Doctor Email for Alerts")
+    s_input = st.text_area("Describe Symptoms (e.g. 'I have severe joint stiffness and muscle pain')")
+    doc_email = st.text_input("Doctor's Email Address for Alerts")
 
 # --- 6. EXECUTION ---
 st.divider()
 if st.button("RUN FULL DIAGNOSTIC", type="primary"):
     if model_assets[0] is not None:
-        # A. Vitals Engine
+        # A. Diagnostic Logic
         features = ['age', 'heart_rate', 'bp_systolic', 'bp_diastolic', 'spo2', 'temp', 'cholesterol', 'glucose', 'respiratory_rate']
         raw_v = [p_age, hr, bps, 80.0, spo2, temp, 190.0, 95.0, 16.0]
-        input_df = pd.DataFrame([raw_v], columns=features)
-        scaled = model_assets[1].transform(input_df)
+        scaled = model_assets[1].transform(pd.DataFrame([raw_v], columns=features))
         dl_disease = model_assets[2].inverse_transform([np.argmax(model_assets[0].predict(scaled, verbose=0))])[0]
         
-        # B. Symptom Engine (Enhanced Tokenization)
-        tokens = clean_and_tokenize(s_input)
+        tokens = get_clean_tokens(s_input)
         matched_scores = {}
-        
         if tokens:
             for d, s_set in disease_map.items():
-                # Direct match for disease name
                 score = 15 if d.lower() in " ".join(tokens) else 0
-                # Match tokens against cleaned symptom set
-                for sym in s_set:
-                    # If the symptom name (e.g. 'muscle pain') is in our tokenized input
-                    if any(t in sym for t in tokens):
-                        score += 1
+                for token in tokens:
+                    for sym in s_set:
+                        if token in sym: score += 1
                 matched_scores[d] = score
-            
             res_disease = max(matched_scores, key=matched_scores.get) if any(v > 0 for v in matched_scores.values()) else "General Assessment"
-        else:
-            res_disease = "General Assessment"
+        else: res_disease = "General Assessment"
 
-        # C. Triage Status
+        # B. Triage Status
         urgency = "EMERGENCY" if spo2 < 90 or bps > 180 or temp >= 39.0 else "Stable"
 
-        # D. Display Diagnostic Summary
+        # C. Display Summary
         st.markdown(f"""<div class="report-container">
-            <h3 style='text-align: center;'>Clinical Diagnostic Report</h3><hr>
-            <p><b>Predicted Disease (Vitals Engine):</b> {dl_disease}</p>
-            <p><b>Detected Disease (Symptom Engine):</b> {res_disease}</p>
-            <p><b>Urgency Status:</b> <span style="color:{'red' if urgency=='EMERGENCY' else 'green'}">{urgency}</span></p>
+            <h3 style='text-align: center;'>Clinical Diagnostic Summary</h3><hr>
+            <p><b>Vitals AI Prediction:</b> {dl_disease}</p>
+            <p><b>Symptom Detection:</b> {res_disease}</p>
+            <p><b>Status:</b> <span style="color:{'red' if urgency=='EMERGENCY' else 'green'}">{urgency}</span></p>
             </div>""", unsafe_allow_html=True)
 
-        # E. Actionable Insights
-        st.subheader("🛑 Actionable Insights")
-        if urgency == "EMERGENCY":
-            st.error("🚨 **CRITICAL:** Immediate clinical intervention required. Proceed to ER.")
-        else:
-            st.info("✅ **STABLE:** Routine follow-up recommended. Monitor symptoms.")
-
-        # F. Medication Therapy
-        found_conds = [d for d in [dl_disease, res_disease] if d not in ["Normal", "General Assessment"]]
-        meds = get_medication_recs(found_conds)
-        if meds:
-            st.subheader("💊 Therapy Recommendations")
-            for m in meds:
-                st.markdown(f'<div class="drug-card"><b>{m["name"]}</b> (Target: {m["for"]})<br><small>{m["desc"]}</small></div>', unsafe_allow_html=True)
-
-        # G. Report Download & Email
-        st.divider()
-        report_txt = f"Patient: {p_name}\nAge: {p_age}\nVitals: {dl_disease}\nSymptoms: {res_disease}\nStatus: {urgency}"
-        c1, c2 = st.columns(2)
-        with c1:
-            st.download_button("📄 Download Clinical Report", report_txt, file_name=f"ClinicalReport_{p_name}.txt")
-        with c2:
-            if doc_email:
-                with st.spinner("Sending Email Alert..."):
-                    report_data = {'name': p_name, 'age': p_age, 'v_diag': dl_disease, 's_diag': res_disease, 'urgency': urgency}
-                    if send_to_doctor(doc_email, report_data, meds):
-                        st.success(f"Alert successfully sent to {doc_email}!")
-    else:
-        st.error("Missing ML Model files (model.h5) in the 'model/' directory.")
+        # D. ACTION
