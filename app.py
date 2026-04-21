@@ -90,20 +90,20 @@ col_l, col_r = st.columns([1, 1], gap="large")
 with col_l:
     st.subheader("👤 Patient Identity & Vitals")
     p_name = st.text_input("Full Name")
-    p_age = st.number_input("Age", 1, 120, 23)
+    p_age = st.number_input("Age", min_value=1, max_value=120, value=23)
     
     v1, v2 = st.columns(2)
     
-    # Heart Rate: Covers everything from Bradycardia to Tachycardia
+    # Heart Rate (Ensure all values have .0)
     hr = v1.number_input("Heart Rate (BPM)", min_value=30.0, max_value=250.0, value=72.0)
     
-    # SpO2: Critical range for detecting Hypoxia/Respiratory Failure
+    # SpO2
     spo2 = v2.number_input("SpO2 (%)", min_value=50.0, max_value=100.0, value=98.0)
     
-    # BP Systolic: Range covers Hypotension to Hypertensive Crisis
+    # BP Systolic
     bps = v1.number_input("BP Systolic (mmHg)", min_value=50.0, max_value=250.0, value=120.0)
     
-    # Temperature: Covers Hypothermia to Hyperpyrexia
+    # Temperature
     temp = v2.number_input("Temperature (°C)", min_value=30.0, max_value=45.0, value=37.0)
 with col_r:
     st.subheader("📋 Clinical Presentation")
