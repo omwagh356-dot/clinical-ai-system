@@ -182,15 +182,15 @@ if st.button("RUN FULL DIAGNOSTIC", type="primary"):
 
         # F. Therapy
         # --- F. Therapy ---
-st.subheader("💊 Therapy Recommendations")
+    st.subheader("💊 Therapy Recommendations")
 
 # List of valid diagnoses from both engines
-valid_diagnoses = [d for d in [v_diag, s_diag] if d not in ["Normal", "General Assessment", "Inconclusive: Please provide more specific symptoms"]]
+    valid_diagnoses = [d for d in [v_diag, s_diag] if d not in ["Normal", "General Assessment", "Inconclusive: Please provide more specific symptoms"]]
 
-if not valid_diagnoses:
-    st.info("💡 **General Advice:** No specific diagnosis confirmed. Please rest, stay hydrated, and consult a doctor if symptoms persist.")
-else:
-    med_found = False
+    if not valid_diagnoses:
+        st.info("💡 **General Advice:** No specific diagnosis confirmed. Please rest, stay hydrated, and consult a doctor if symptoms persist.")
+    else:
+        med_found = False
     # Ensure column names are mapped correctly based on your description
     # Typically: Column 0 = Drug Name, Column 1 = Reason, Column 2 = Description
     cols = medicine_db.columns.tolist()
@@ -216,8 +216,8 @@ else:
                 </div>
                 """, unsafe_allow_html=True)
 
-    if not med_found:
-        st.warning(f"No specific medications found in the database for the detected conditions.")
+        if not med_found:
+            st.warning(f"No specific medications found in the database for the detected conditions.")
         # G. Export
         report_txt = f"Patient: {p_name}\nVitals: {v_diag} ({v_prob:.2f}%)\nSymptoms: {s_diag}\nStatus: {urgency}"
         c1, c2 = st.columns(2)
