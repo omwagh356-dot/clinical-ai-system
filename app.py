@@ -130,22 +130,35 @@ if st.button("RUN FULL DIAGNOSTIC", type="primary"):
             </div>""", unsafe_allow_html=True)
 
         # C. Therapy Recommendations (CRITICAL: STAY INSIDE THE IF BLOCK)
+        # --- F. Therapy Recommendations ---
         st.subheader("💊 Therapy Recommendations")
-        valid_diagnoses = [d for d in [v_diag, s_diag] if d not in ["Normal", "General Assessment", "Inconclusive: Please provide more specific symptoms", "No Symptoms Detected"]]
         
+        # 1. Clean the list of predicted diseases
+        valid_diagnoses = [d.strip().lower() for d in [v_diag, s_diag] 
+                          if d not in ["Normal", "General Assessment", "Inconclusive: Please provide more specific symptoms", "No Symptoms Detected"]]
+
         med_list = []
         if not valid_diagnoses:
             st.info("💡 General Advice: Rest and stay hydrated.")
         else:
+            med_found = False
             cols = medicine_db.columns.tolist()
+            
             for cond in valid_diagnoses:
-                mask = medicine_db[cols[1]].astype(str).str.contains(str(cond), case=False, na=False)
+                # 2. ROBUST SEARCH: Clean the 'Reason' column while searching
+                # This matches "Jaundice" to "jaundice ", "JAUNDICE", or "Jaundice Treatment"
+                mask = medicine_db[cols[1]].astype(str).str.lower().str.contains(cond, na=False)
                 results = medicine_db[mask].head(3)
-                for _, row in results.iterrows():
-                    m = {'name': row[cols[0]], 'for': cond, 'desc': row[cols[2]] if len(cols) > 2 else "N/A"}
-                    med_list.append(m)
-                    st.markdown(f'<div class="drug-card"><b>{m["name"]}</b> (Target: {m["for"]})<br><small>{m["desc"]}</small></div>', unsafe_allow_html=True)
-
+                
+                if not results.empty:
+                    med_found = True
+                    for _, row in results.iterrows():
+                        m = {'name': row[cols[0]], 'for': cond.title(), 'desc': row[cols[2]] if len(cols) > 2 else "N/A"}
+                        med_list.append(m)
+                        st.markdown(f'<div class="drug-card"><b>{m["name"]}</b> (Target: {m["for"]})<br><small>{m["desc"]}</small></div>', unsafe_allow_html=True)
+            
+            if not med_found:
+                st.warning(f"No medications found in database matching: {', '.join(valid_diagnoses).title()}")
         # D. Export & Email (CRITICAL: STAY INSIDE THE IF BLOCK)
         st.divider()
         c1, c2 = st.columns(2)
