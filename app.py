@@ -66,16 +66,20 @@ def predict_symptoms(user_input, s_model, s_le, s_features):
             input_vector[i] = 1
             
     if np.sum(input_vector) == 0:
-        return "General Assessment", 0.0
+        return "No Symptoms Detected", 0.0
     
     pred_prob = s_model.predict_proba([input_vector])
     idx = np.argmax(pred_prob)
     confidence = np.max(pred_prob) * 100
     disease = s_le.inverse_transform([idx])[0]
 
-    # LOGIC FIX: If confidence is low, don't give a scary diagnosis
-    if confidence < 70 and disease in ["AIDS", "paralysis ", "Hypertension "]:
-        return "General Viral Fever / Malaise", confidence
+    # --- THE PROFESSIONAL GUARDRAIL ---
+    if confidence < 45:
+        return "Inconclusive: Please provide more specific symptoms", confidence
+    
+    # Preventing scary low-confidence results for common symptoms
+    if confidence < 70 and disease in ["AIDS", "paralysis (brain hemorrhage)", "Heart attack"]:
+        return "General Viral Syndrome (Low Confidence)", confidence
     
     return disease, confidence
 
