@@ -18,12 +18,7 @@ st.markdown("""
     .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #1a73e8; color: white; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
-# Add this to your UI code
-symptom_list = joblib.load('symptom_features.pkl')
-selected_symptoms = st.multiselect("Select your symptoms:", options=symptom_list)
 
-# Then convert selected_symptoms to a string to pass to your prediction function
-s_input = ", ".join(selected_symptoms)
 # --- 2. ASSET LOADING ---
 @st.cache_resource
 def load_all_assets():
