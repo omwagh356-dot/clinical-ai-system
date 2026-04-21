@@ -6,7 +6,6 @@ import os
 import smtplib
 from email.message import EmailMessage
 from tensorflow.keras.models import load_model
-import io
 
 # --- 1. CONFIG & ASSETS ---
 st.set_page_config(page_title="Clinical AI Portal", layout="wide", page_icon="🏥")
@@ -15,7 +14,6 @@ st.markdown("""
     <style>
     .report-container { border: 2px solid #1a73e8; padding: 20px; border-radius: 10px; margin-top: 20px; color: inherit; }
     .drug-card { background-color: rgba(26, 115, 232, 0.1); border-left: 5px solid #1a73e8; padding: 12px; margin-bottom: 10px; border-radius: 5px; }
-    .triage-alert { background-color: #fce8e6; border: 1px solid #d93025; color: #d93025; padding: 15px; border-radius: 5px; font-weight: bold; }
     .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #1a73e8; color: white; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
@@ -51,82 +49,90 @@ disease_map, medicine_db = load_knowledge_bases()
 
 # --- 2. CORE LOGIC ---
 
-def get_medication_recs(detected_condition):
-    if medicine_db.empty or not detected_condition or "General" in str(detected_condition): return []
-    query = str(detected_condition).lower().strip()
+def get_medication_recs(condition_list):
+    """Fetches drugs for a list of conditions found by either engine."""
+    if medicine_db.empty or not condition_list:
+        return []
+    
+    matches = []
     cols = list(medicine_db.columns)
-    mask = medicine_db[cols[1]].astype(str).str.contains(query, case=False, na=False)
-    results = medicine_db[mask].head(5)
-    return [{'Drug_Name': row[cols[0]], 'Description': row[cols[2]]} for _, row in results.iterrows()]
+    
+    for condition in condition_list:
+        if not condition or "General" in str(condition) or "Normal" in str(condition):
+            continue
+            
+        query = str(condition).lower().strip()
+        mask = medicine_db[cols[1]].astype(str).str.contains(query, case=False, na=False)
+        results = medicine_db[mask].head(3)
+        
+        for _, row in results.iterrows():
+            matches.append({'Drug_Name': row[cols[0]], 'Description': row[cols[2]], 'For': condition})
+            
+    return matches
 
 # --- 3. UI ---
 st.title("🏥 Clinical AI: Intelligent Risk & Therapy Engine")
-st.caption("M.Sc. Final Project | Dual-Engine Diagnostic Framework")
 st.divider()
 
 col_l, col_r = st.columns([1, 1], gap="large")
 with col_l:
     st.subheader("👤 Patient Identity & Vitals")
-    p_name = st.text_input("Full Name")
+    p_name = st.text_input("Full Name", "Patient")
     doc_email = st.text_input("Doctor Email")
     p_age = st.number_input("Age", 1, 120, 23)
     v1, v2 = st.columns(2)
     hr = v1.number_input("Heart Rate", 72.0)
-    spo2 = v2.number_input("SpO2 %", min_value=50.0, max_value=100.0, value=98.0)
-    bps = v1.number_input("BP Systolic")
+    spo2 = v2.number_input("SpO2 %", 98.0)
+    bps = v1.number_input("BP Systolic", 120.0)
     temp = v2.number_input("Temp °C", 37.0)
 
 with col_r:
     st.subheader("📋 Clinical Presentation")
-    s_input = st.text_area("Describe Symptoms")
+    s_input = st.text_area("Describe Symptoms (e.g., 'muscle pain, joint stiffness')")
 
 # --- 4. EXECUTION ---
 st.divider()
-if st.button("RUN FULL DIAGNOSTIC & GENERATE REPORT", type="primary"):
+if st.button("RUN FULL DIAGNOSTIC", type="primary"):
     if model and scaler:
-        # A. Diagnostic Engines
+        # A. Vitals Engine (Predicted by ML)
         features = ['age', 'heart_rate', 'bp_systolic', 'bp_diastolic', 'spo2', 'temp', 'cholesterol', 'glucose', 'respiratory_rate']
         raw_v = [p_age, hr, bps, 80.0, spo2, temp, 190.0, 95.0, 16.0]
-        scaled = scaler.transform(pd.DataFrame([raw_v], columns=features))
-        dl_disease = le.inverse_transform([np.argmax(model.predict(scaled, verbose=0))])[0]
+        input_df = pd.DataFrame([raw_v], columns=features)
+        scaled = scaler.transform(input_df)
+        pred = model.predict(scaled, verbose=0)
+        dl_disease = le.inverse_transform([np.argmax(pred)])[0]
+        prob = np.max(pred) * 100
         
+        # B. Symptom Engine (Predicted by Symptoms)
         user_text = s_input.lower()
         matched_scores = {d: sum(1 for sym in s_set if sym in user_text) for d, s_set in disease_map.items()}
         res_disease = max(matched_scores, key=matched_scores.get, default="General Assessment") if any(matched_scores.values()) else "General Assessment"
         
-        # B. Triage & Next Step Logic
-        urgency = "IMMEDIATE ER" if spo2 < 90 or bps > 175 or temp >= 39.5 else "Urgent Consultation" if temp >= 38.0 else "Stable / Routine Follow-up"
+        # C. Triage Status
+        urgency = "IMMEDIATE ER" if spo2 < 90 or bps > 175 or temp >= 38.5 else "Stable"
+
+        # D. Display Results
+        st.markdown(f"""<div class="report-container"><h2 style='text-align: center;'>Clinical Diagnostic Report</h2><hr>
+            <p><b>AI Diagnosis (from Vitals):</b> {dl_disease} ({prob:.2f}%)</p>
+            <p><b>Symptom Detection (from Text):</b> {res_disease}</p>
+            <p><b>Status:</b> <span style="color: {'red' if urgency != 'Stable' else 'green'}; font-weight: bold;">{urgency}</span></p></div>""", unsafe_allow_html=True)
+
+        # E. Independent Therapy Logic
+        # It collects findings from BOTH engines and searches for meds for both
+        conditions_found = []
+        if dl_disease != "Normal": conditions_found.append(dl_disease)
+        if res_disease != "General Assessment": conditions_found.append(res_disease)
         
-        # C. Report Display
-        st.markdown(f"""<div class="report-container"><h3>Clinical Diagnostic Report</h3><hr>
-            <p><b>Vitals Diagnosis:</b> {dl_disease}</p>
-            <p><b>Symptom Matching:</b> {res_disease}</p>
-            <p><b>Clinical Status:</b> {urgency}</p></div>""", unsafe_allow_html=True)
-
-        # D. ACTIONABLE NEXT STEPS
-        st.subheader("🚨 What you should do next:")
-        if "IMMEDIATE" in urgency:
-            st.markdown('<div class="triage-alert">CRITICAL: Visit the nearest Emergency Room immediately. Oxygen or IV fluids may be required.</div>', unsafe_allow_html=True)
-        elif "Urgent" in urgency:
-            st.info("Schedule an urgent appointment with your GP today. Monitor vitals every 4 hours.")
-        else:
-            st.success("Continue monitoring symptoms. If symptoms persist for >3 days, consult a physician.")
-
-        # E. Therapy
-        final_cond = res_disease if res_disease != "General Assessment" else dl_disease
-        meds = get_medication_recs(final_cond)
+        meds = get_medication_recs(conditions_found)
+        
         if meds:
-            st.subheader(f"💊 Therapy Recommendation: {final_cond}")
+            st.subheader("💊 Combined Therapy Recommendations")
             for m in meds: 
-                st.markdown(f'<div class="drug-card"><b>{m["Drug_Name"]}</b><br><small>{m["Description"]}</small></div>', unsafe_allow_html=True)
-
-        # F. REPORT DOWNLOAD (RESTORED)
-        report_text = f"Clinical AI Report\nPatient: {p_name}\nDiagnosis: {dl_disease}\nSymptom Detection: {res_disease}\nStatus: {urgency}\n\nRecommended Drugs:\n"
-        for m in meds: report_text += f"- {m['Drug_Name']}\n"
-        
-        st.download_button(
-            label="📄 Download Diagnostic Report",
-            data=report_text,
-            file_name=f"Clinical_Report_{p_name}.txt",
-            mime="text/plain"
-        )
+                st.markdown(f"""<div class="drug-card">
+                    <b>{m['Drug_Name']}</b> (Target: {m['For']})<br>
+                    <small>{m['Description']}</small>
+                </div>""", unsafe_allow_html=True)
+        else:
+            st.info("No specific medications matched the detected conditions.")
+    else:
+        st.error("Assets missing.")
