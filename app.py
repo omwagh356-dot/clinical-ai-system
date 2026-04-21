@@ -23,16 +23,12 @@ st.markdown("""
 @st.cache_resource
 def load_all_assets():
     try:
-        # Vitals Engine (Deep Learning)
         v_model = load_model("model/model.h5")
         v_scaler = joblib.load("scaler.pkl")
         v_le = joblib.load("label_encoder.pkl")
-        
-        # Symptom Engine (Trained Random Forest)
         s_model = joblib.load("symptom_model.pkl")
         s_le = joblib.load("symptom_encoder.pkl")
         s_features = joblib.load("symptom_features.pkl")
-        
         return v_model, v_scaler, v_le, s_model, s_le, s_features
     except Exception as e:
         st.error(f"Error loading models: {e}")
@@ -51,29 +47,20 @@ assets = load_all_assets()
 medicine_db = load_medicine_db()
 
 # --- 3. LOGIC FUNCTIONS ---
-
 def predict_symptoms(user_input, s_model, s_le, s_features):
     tokens = [t.strip().lower().replace("_", " ") for t in user_input.split(",")]
     input_vector = np.zeros(len(s_features))
-    
     for i, feature in enumerate(s_features):
         if feature.lower().replace("_", " ") in tokens:
             input_vector[i] = 1
-            
     if np.sum(input_vector) == 0:
         return "No Symptoms Detected", 0.0
-    
     pred_prob = s_model.predict_proba([input_vector])
     idx = np.argmax(pred_prob)
     confidence = np.max(pred_prob) * 100
     disease = s_le.inverse_transform([idx])[0]
-
-    # Guardrails
     if confidence < 45:
         return "Inconclusive: Please provide more specific symptoms", confidence
-    if confidence < 70 and disease in ["AIDS", "paralysis (brain hemorrhage)", "Heart attack"]:
-        return "General Viral Syndrome (Low Confidence)", confidence
-    
     return disease, confidence
 
 def send_alert(receiver_email, report_data, meds):
@@ -89,18 +76,15 @@ def send_alert(receiver_email, report_data, meds):
             smtp.login(st.secrets["EMAIL_USER"], st.secrets["EMAIL_PASS"])
             smtp.send_message(msg)
         return True
-    except:
-        return False
+    except: return False
 
 # --- 4. HEADER ---
 st.title("🏥 Clinical AI: Intelligent Risk & Therapy Engine")
 st.markdown("### **M.Sc. Data Science Final Project**")
-st.markdown("**Developer:** Onkar Suresh Wagh")
 st.divider()
 
 # --- 5. UI INPUTS ---
 col_l, col_r = st.columns([1, 1], gap="large")
-
 with col_l:
     st.subheader("👤 Patient Identity & Vitals")
     p_name = st.text_input("Full Name", "Onkar Wagh")
@@ -114,55 +98,44 @@ with col_l:
 with col_r:
     st.subheader("📋 Clinical Presentation")
     if assets[5] is not None:
-        symptom_list = assets[5]
-        selected = st.multiselect("Quick Select Symptoms:", options=symptom_list)
+        selected = st.multiselect("Quick Select Symptoms:", options=assets[5])
         default_text = ", ".join(selected)
-    else:
-        default_text = ""
-
+    else: default_text = ""
     s_input = st.text_area("Clinical Description", value=default_text, height=150)
     doc_email = st.text_input("Doctor Email for Alerts")
 
-# --- 6. EXECUTION ---
+# --- 6. EXECUTION (The Fix is here!) ---
 st.divider()
 if st.button("RUN FULL DIAGNOSTIC", type="primary"):
-    # Initialize variables inside the button click
-    v_diag, v_prob = "Not Analyzed", 0.0
-    s_diag, s_prob = "Not Analyzed", 0.0
-    med_list = []
-    urgency = "Stable"
-
     if all(assets) and not medicine_db.empty:
         v_model, v_scaler, v_le, s_model, s_le, s_features = assets
         
-        # A. Vitals Engine
-        v_features = ['age', 'heart_rate', 'bp_systolic', 'bp_diastolic', 'spo2', 'temp', 'cholesterol', 'glucose', 'respiratory_rate']
+        # A. Run AI Predictions
+        v_feat_names = ['age', 'heart_rate', 'bp_systolic', 'bp_diastolic', 'spo2', 'temp', 'cholesterol', 'glucose', 'respiratory_rate']
         raw_v = [p_age, hr, bps, 80.0, spo2, temp, 190.0, 95.0, 16.0]
-        v_scaled = v_scaler.transform(pd.DataFrame([raw_v], columns=v_features))
+        v_scaled = v_scaler.transform(pd.DataFrame([raw_v], columns=v_feat_names))
         v_preds = v_model.predict(v_scaled, verbose=0)
         v_diag = v_le.inverse_transform([np.argmax(v_preds)])[0]
         v_prob = np.max(v_preds) * 100
         
-        # B. Symptom Engine
         s_diag, s_prob = predict_symptoms(s_input, s_model, s_le, s_features)
         urgency = "EMERGENCY" if spo2 < 90 or bps > 180 or temp >= 39.5 else "Stable"
 
-        # D. Display Report
+        # B. Display Report
         st.markdown(f"""<div class="report-container">
             <h3 style='text-align: center;'>Clinical Diagnostic Report</h3><hr>
             <p><b>Vitals AI Prediction:</b> {v_diag} ({v_prob:.2f}%)</p>
-            <p><b>Symptom AI Prediction:</b> {s_diag} {f'({s_prob:.2f}%)' if s_prob > 0 else ''}</p>
+            <p><b>Symptom AI Prediction:</b> {s_diag} ({s_prob:.2f}%)</p>
             <p><b>Status:</b> <span style="color:{'red' if urgency=='EMERGENCY' else 'green'}">{urgency}</span></p>
             </div>""", unsafe_allow_html=True)
 
-        # --- EVERYTHING BELOW MUST BE INDENTED HERE ---
-        
-        # E. Therapy Recommendations (Now safe because v_diag exists)
+        # C. Therapy Recommendations (CRITICAL: STAY INSIDE THE IF BLOCK)
         st.subheader("💊 Therapy Recommendations")
-        valid_diagnoses = [d for d in [v_diag, s_diag] if d not in ["Not Analyzed", "Normal", "Inconclusive: Please provide more specific symptoms"]]
-
+        valid_diagnoses = [d for d in [v_diag, s_diag] if d not in ["Normal", "General Assessment", "Inconclusive: Please provide more specific symptoms", "No Symptoms Detected"]]
+        
+        med_list = []
         if not valid_diagnoses:
-            st.info("💡 General Advice: Stay hydrated and rest.")
+            st.info("💡 General Advice: Rest and stay hydrated.")
         else:
             cols = medicine_db.columns.tolist()
             for cond in valid_diagnoses:
@@ -173,17 +146,16 @@ if st.button("RUN FULL DIAGNOSTIC", type="primary"):
                     med_list.append(m)
                     st.markdown(f'<div class="drug-card"><b>{m["name"]}</b> (Target: {m["for"]})<br><small>{m["desc"]}</small></div>', unsafe_allow_html=True)
 
-        # F. Export & Email (Also indented)
+        # D. Export & Email (CRITICAL: STAY INSIDE THE IF BLOCK)
         st.divider()
         c1, c2 = st.columns(2)
-        report_txt = f"Patient: {p_name}\nVitals: {v_diag} ({v_prob:.2f}%)\nSymptoms: {s_diag}\nStatus: {urgency}"
-        with c1: 
-            st.download_button("📄 Download Report", report_txt, file_name=f"Report_{p_name}.txt")
+        report_txt = f"Patient: {p_name}\nVitals: {v_diag}\nSymptoms: {s_diag}\nStatus: {urgency}"
+        with c1: st.download_button("📄 Download Report", report_txt, file_name=f"Report_{p_name}.txt")
         with c2:
             if doc_email:
                 with st.spinner("Sending Email Alert..."):
                     rep_data = {'name':p_name, 'v_diag':v_diag, 'v_prob':f"{v_prob:.2f}%", 's_diag':s_diag, 's_prob':f"{s_prob:.2f}%", 'urgency':urgency}
-                    if send_alert(doc_email, rep_data, med_list):
-                        st.success("Alert sent to physician!")
+                    if send_alert(doc_email, rep_data, med_list): st.success("Alert sent!")
+                    else: st.error("Email failed. Check secrets.")
     else:
-        st.error("Assets or Data missing. Check your folder structure.")
+        st.error("Missing files (scaler.pkl, model.h5, or Excel). Please check your GitHub repository.")
