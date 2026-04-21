@@ -80,14 +80,14 @@ def send_alert(receiver_email, report_data, meds):
 
 # --- 4. HEADER ---
 st.title("🏥 Clinical AI: Intelligent Risk & Therapy Engine")
-st.markdown("Onkar Suresh Wagh | M.Sc. Data Science Final Project")
+st.markdown("*Onkar Suresh Wagh | M.Sc. Data Science Final Project*")
 st.divider()
 
 # --- 5. UI INPUTS ---
 col_l, col_r = st.columns([1, 1], gap="large")
 with col_l:
     st.subheader("👤 Patient Identity & Vitals")
-    p_name = st.text_input("Full Name", "Onkar Wagh")
+    p_name = st.text_input("Full Name")
     p_age = st.number_input("Age", 1, 120, 23)
     v1, v2 = st.columns(2)
     hr = v1.number_input("Heart Rate (BPM)", 30.0, 250.0, 72.0)
