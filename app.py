@@ -52,11 +52,6 @@ medicine_db = load_medicine_db()
 
 # --- 3. LOGIC FUNCTIONS ---
 
-def get_clean_tokens(text):
-    text = text.lower().replace("_", " ")
-    text = re.sub(r'[^\w\s]', '', text)
-    return text.split()
-
 def predict_symptoms(user_input, s_model, s_le, s_features):
     tokens = [t.strip().lower().replace("_", " ") for t in user_input.split(",")]
     input_vector = np.zeros(len(s_features))
@@ -73,11 +68,9 @@ def predict_symptoms(user_input, s_model, s_le, s_features):
     confidence = np.max(pred_prob) * 100
     disease = s_le.inverse_transform([idx])[0]
 
-    # --- THE PROFESSIONAL GUARDRAIL ---
+    # Guardrails
     if confidence < 45:
         return "Inconclusive: Please provide more specific symptoms", confidence
-    
-    # Preventing scary low-confidence results for common symptoms
     if confidence < 70 and disease in ["AIDS", "paralysis (brain hemorrhage)", "Heart attack"]:
         return "General Viral Syndrome (Low Confidence)", confidence
     
@@ -94,8 +87,10 @@ def send_alert(receiver_email, report_data, meds):
     try:
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
             smtp.login(st.secrets["EMAIL_USER"], st.secrets["EMAIL_PASS"])
-            smtp.send_message(msg); return True
-    except: return False
+            smtp.send_message(msg)
+        return True
+    except:
+        return False
 
 # --- 4. HEADER ---
 st.title("🏥 Clinical AI: Intelligent Risk & Therapy Engine")
@@ -103,7 +98,6 @@ st.markdown("### **M.Sc. Data Science Final Project**")
 st.markdown("**Developer:** Onkar Suresh Wagh")
 st.divider()
 
-# --- 5. UI INPUTS ---
 # --- 5. UI INPUTS ---
 col_l, col_r = st.columns([1, 1], gap="large")
 
@@ -119,53 +113,43 @@ with col_l:
 
 with col_r:
     st.subheader("📋 Clinical Presentation")
-    
-    # 1. Load the features (symptoms) your model knows
     if assets[5] is not None:
-        symptom_list = assets[5] # This is your symptom_features.pkl
-        
-        # 2. Multi-select Dropdown
-        selected = st.multiselect(
-            "Quick Select Symptoms:", 
-            options=symptom_list,
-            help="Select symptoms to automatically add them to the description box below."
-        )
-        
-        # 3. Create the combined text for the box
+        symptom_list = assets[5]
+        selected = st.multiselect("Quick Select Symptoms:", options=symptom_list)
         default_text = ", ".join(selected)
     else:
         default_text = ""
 
-    # 4. The Text Area (populated by the dropdown)
-    s_input = st.text_area(
-        "Clinical Description", 
-        value=default_text,
-        placeholder="Selected symptoms will appear here. You can also type manually.",
-        height=150
-    )
-    
+    s_input = st.text_area("Clinical Description", value=default_text, height=150)
     doc_email = st.text_input("Doctor Email for Alerts")
+
 # --- 6. EXECUTION ---
 st.divider()
 if st.button("RUN FULL DIAGNOSTIC", type="primary"):
+    # Initialize variables to avoid NameError
+    v_diag, v_prob = "Not Analyzed", 0.0
+    s_diag, s_prob = "Not Analyzed", 0.0
+    med_list = []
+    urgency = "Stable"
+
     if all(assets) and not medicine_db.empty:
         v_model, v_scaler, v_le, s_model, s_le, s_features = assets
         
-        # A. Vitals Engine (Deep Learning)
-        features = ['age', 'heart_rate', 'bp_systolic', 'bp_diastolic', 'spo2', 'temp', 'cholesterol', 'glucose', 'respiratory_rate']
+        # A. Vitals Engine
+        v_features = ['age', 'heart_rate', 'bp_systolic', 'bp_diastolic', 'spo2', 'temp', 'cholesterol', 'glucose', 'respiratory_rate']
         raw_v = [p_age, hr, bps, 80.0, spo2, temp, 190.0, 95.0, 16.0]
-        v_scaled = v_scaler.transform(pd.DataFrame([raw_v], columns=features))
+        v_scaled = v_scaler.transform(pd.DataFrame([raw_v], columns=v_features))
         v_preds = v_model.predict(v_scaled, verbose=0)
         v_diag = v_le.inverse_transform([np.argmax(v_preds)])[0]
         v_prob = np.max(v_preds) * 100
         
-        # B. Symptom Engine (Trained Model)
+        # B. Symptom Engine
         s_diag, s_prob = predict_symptoms(s_input, s_model, s_le, s_features)
 
-        # C. Status
+        # C. Urgency
         urgency = "EMERGENCY" if spo2 < 90 or bps > 180 or temp >= 39.5 else "Stable"
 
-        # D. Display
+        # D. Display Report
         st.markdown(f"""<div class="report-container">
             <h3 style='text-align: center;'>Clinical Diagnostic Report</h3><hr>
             <p><b>Vitals AI Prediction:</b> {v_diag} ({v_prob:.2f}%)</p>
@@ -173,59 +157,40 @@ if st.button("RUN FULL DIAGNOSTIC", type="primary"):
             <p><b>Status:</b> <span style="color:{'red' if urgency=='EMERGENCY' else 'green'}">{urgency}</span></p>
             </div>""", unsafe_allow_html=True)
 
-        # E. Insights
-        st.subheader("🛑 Actionable Insights")
         if urgency == "EMERGENCY":
             st.error("🚨 CRITICAL: Immediate intervention required. Visit ER.")
         else:
             st.info("✅ STABLE: Routine follow-up recommended.")
 
-# --- F. Therapy ---
-st.subheader("💊 Therapy Recommendations")
+        # E. Therapy Logic
+        st.subheader("💊 Therapy Recommendations")
+        valid_diagnoses = [d for d in [v_diag, s_diag] if d not in ["Not Analyzed", "Normal", "General Assessment", "Inconclusive: Please provide more specific symptoms"]]
 
-# List of valid diagnoses from both engines
-valid_diagnoses = [d for d in [v_diag, s_diag] if d not in ["Normal", "General Assessment", "Inconclusive: Please provide more specific symptoms"]]
+        if not valid_diagnoses:
+            st.info("💡 **General Advice:** No specific diagnosis confirmed. Please stay hydrated and rest.")
+        else:
+            cols = medicine_db.columns.tolist()
+            for cond in valid_diagnoses:
+                mask = medicine_db[cols[1]].astype(str).str.contains(str(cond), case=False, na=False)
+                results = medicine_db[mask].head(3)
+                for _, row in results.iterrows():
+                    m = {'name': row[cols[0]], 'for': cond, 'desc': row[cols[2]] if len(cols) > 2 else "N/A"}
+                    med_list.append(m)
+                    st.markdown(f'<div class="drug-card"><b>{m["name"]}</b> (Target: {m["for"]})<br><small>{m["desc"]}</small></div>', unsafe_allow_html=True)
 
-if not valid_diagnoses:
-    st.info("💡 **General Advice:** No specific diagnosis confirmed. Please rest, stay hydrated, and consult a doctor if symptoms persist.")
-else:
-    med_found = False
-    # Ensure column names are mapped correctly based on your description
-    # Typically: Column 0 = Drug Name, Column 1 = Reason, Column 2 = Description
-    cols = medicine_db.columns.tolist()
-    
-    for cond in valid_diagnoses:
-        # Search the 'Reason' column for the condition name
-        # .str.contains allows for partial matches (e.g., 'Jaundice' matches 'Jaundice Treatment')
-        mask = medicine_db[cols[1]].astype(str).str.contains(str(cond), case=False, na=False)
-        results = medicine_db[mask].head(3)
-        
-        if not results.empty:
-            med_found = True
-            for _, row in results.iterrows():
-                drug_name = row[cols[0]]
-                reason = row[cols[1]]
-                description = row[cols[2]] if len(cols) > 2 else "No description available."
-                
-                st.markdown(f"""
-                <div class="drug-card">
-                    <b style="color:#1a73e8; font-size:1.1em;">{drug_name}</b><br>
-                    <small><b>Indication:</b> {reason}</small><br>
-                    <p style="margin-top:5px;">{description}</p>
-                </div>
-                """, unsafe_allow_html=True)
-
-    if not med_found:
-        st.warning(f"No specific medications found in the database for the detected conditions.")
-        # G. Export
-        report_txt = f"Patient: {p_name}\nVitals: {v_diag} ({v_prob:.2f}%)\nSymptoms: {s_diag}\nStatus: {urgency}"
+        # F. Export & Email
+        st.divider()
         c1, c2 = st.columns(2)
-        with c1: st.download_button("📄 Download Report", report_txt, file_name=f"Report_{p_name}.txt")
+        report_txt = f"Patient: {p_name}\nVitals: {v_diag} ({v_prob:.2f}%)\nSymptoms: {s_diag}\nStatus: {urgency}"
+        with c1: 
+            st.download_button("📄 Download Report", report_txt, file_name=f"Report_{p_name}.txt")
         with c2:
             if doc_email:
                 with st.spinner("Sending Email Alert..."):
-                    rep = {'name':p_name, 'v_diag':v_diag, 'v_prob':f"{v_prob:.2f}%", 's_diag':s_diag, 's_prob':f"{s_prob:.2f}%", 'urgency':urgency}
-                    if send_alert(doc_email, rep, med_list):
+                    rep_data = {'name':p_name, 'v_diag':v_diag, 'v_prob':f"{v_prob:.2f}%", 's_diag':s_diag, 's_prob':f"{s_prob:.2f}%", 'urgency':urgency}
+                    if send_alert(doc_email, rep_data, med_list):
                         st.success("Alert sent to physician!")
+                    else:
+                        st.error("Failed to send email. Check Secrets.")
     else:
-        st.error("Assets or Data missing. Ensure 'symptom_model.pkl' etc. are in the root folder.")
+        st.error("Assets missing. Ensure all .pkl and .h5 files are uploaded.")
