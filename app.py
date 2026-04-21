@@ -126,40 +126,28 @@ with col_r:
 # --- 6. EXECUTION ---
 st.divider()
 if st.button("RUN FULL DIAGNOSTIC", type="primary"):
-    
-    # 1. INITIALIZE ALL VARIABLES IMMEDIATELY
-    # This prevents the "NameError" by ensuring the variables exist
-    v_diag = "Not Assessed"
-    v_prob = 0.0
-    s_diag = "Not Assessed"
-    s_prob = 0.0
+    # Initialize variables inside the button click
+    v_diag, v_prob = "Not Analyzed", 0.0
+    s_diag, s_prob = "Not Analyzed", 0.0
     med_list = []
     urgency = "Stable"
 
-    # 2. PROCEED WITH AI ENGINES
     if all(assets) and not medicine_db.empty:
         v_model, v_scaler, v_le, s_model, s_le, s_features = assets
         
         # A. Vitals Engine
-        try:
-            v_features = ['age', 'heart_rate', 'bp_systolic', 'bp_diastolic', 'spo2', 'temp', 'cholesterol', 'glucose', 'respiratory_rate']
-            raw_v = [p_age, hr, bps, 80.0, spo2, temp, 190.0, 95.0, 16.0]
-            v_scaled = v_scaler.transform(pd.DataFrame([raw_v], columns=v_features))
-            v_preds = v_model.predict(v_scaled, verbose=0)
-            
-            # Update the initialized variables
-            v_diag = v_le.inverse_transform([np.argmax(v_preds)])[0]
-            v_prob = np.max(v_preds) * 100
-        except Exception as e:
-            st.error(f"Vitals Engine Error: {e}")
-
+        v_features = ['age', 'heart_rate', 'bp_systolic', 'bp_diastolic', 'spo2', 'temp', 'cholesterol', 'glucose', 'respiratory_rate']
+        raw_v = [p_age, hr, bps, 80.0, spo2, temp, 190.0, 95.0, 16.0]
+        v_scaled = v_scaler.transform(pd.DataFrame([raw_v], columns=v_features))
+        v_preds = v_model.predict(v_scaled, verbose=0)
+        v_diag = v_le.inverse_transform([np.argmax(v_preds)])[0]
+        v_prob = np.max(v_preds) * 100
+        
         # B. Symptom Engine
         s_diag, s_prob = predict_symptoms(s_input, s_model, s_le, s_features)
-
-        # C. Urgency Logic
         urgency = "EMERGENCY" if spo2 < 90 or bps > 180 or temp >= 39.5 else "Stable"
 
-        # D. Display (This will now always find v_diag, even if it's "Not Assessed")
+        # D. Display Report
         st.markdown(f"""<div class="report-container">
             <h3 style='text-align: center;'>Clinical Diagnostic Report</h3><hr>
             <p><b>Vitals AI Prediction:</b> {v_diag} ({v_prob:.2f}%)</p>
@@ -167,18 +155,14 @@ if st.button("RUN FULL DIAGNOSTIC", type="primary"):
             <p><b>Status:</b> <span style="color:{'red' if urgency=='EMERGENCY' else 'green'}">{urgency}</span></p>
             </div>""", unsafe_allow_html=True)
 
-    
-        if urgency == "EMERGENCY":
-            st.error("🚨 CRITICAL: Immediate intervention required. Visit ER.")
-        else:
-            st.info("✅ STABLE: Routine follow-up recommended.")
-
-        # E. Therapy Logic
+        # --- EVERYTHING BELOW MUST BE INDENTED HERE ---
+        
+        # E. Therapy Recommendations (Now safe because v_diag exists)
         st.subheader("💊 Therapy Recommendations")
-        valid_diagnoses = [d for d in [v_diag, s_diag] if d not in ["Not Analyzed", "Normal", "General Assessment", "Inconclusive: Please provide more specific symptoms"]]
+        valid_diagnoses = [d for d in [v_diag, s_diag] if d not in ["Not Analyzed", "Normal", "Inconclusive: Please provide more specific symptoms"]]
 
         if not valid_diagnoses:
-            st.info("💡 **General Advice:** No specific diagnosis confirmed. Please stay hydrated and rest.")
+            st.info("💡 General Advice: Stay hydrated and rest.")
         else:
             cols = medicine_db.columns.tolist()
             for cond in valid_diagnoses:
@@ -189,7 +173,7 @@ if st.button("RUN FULL DIAGNOSTIC", type="primary"):
                     med_list.append(m)
                     st.markdown(f'<div class="drug-card"><b>{m["name"]}</b> (Target: {m["for"]})<br><small>{m["desc"]}</small></div>', unsafe_allow_html=True)
 
-        # F. Export & Email
+        # F. Export & Email (Also indented)
         st.divider()
         c1, c2 = st.columns(2)
         report_txt = f"Patient: {p_name}\nVitals: {v_diag} ({v_prob:.2f}%)\nSymptoms: {s_diag}\nStatus: {urgency}"
@@ -201,7 +185,5 @@ if st.button("RUN FULL DIAGNOSTIC", type="primary"):
                     rep_data = {'name':p_name, 'v_diag':v_diag, 'v_prob':f"{v_prob:.2f}%", 's_diag':s_diag, 's_prob':f"{s_prob:.2f}%", 'urgency':urgency}
                     if send_alert(doc_email, rep_data, med_list):
                         st.success("Alert sent to physician!")
-                    else:
-                        st.error("Failed to send email. Check Secrets.")
     else:
-        st.error("Assets missing. Ensure all .pkl and .h5 files are uploaded.")
+        st.error("Assets or Data missing. Check your folder structure.")
