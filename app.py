@@ -26,7 +26,7 @@ def load_ml_assets():
         le = joblib.load("label_encoder.pkl")
         return model, scaler, le
     except Exception as e:
-        st.warning(f"ML Assets (model.h5) not found: {e}")
+        st.warning(f"ML Assets not found: {e}")
         return None, None, None
 
 @st.cache_data
@@ -35,14 +35,12 @@ def load_knowledge_bases():
     medicine_file = 'Medicine_description.xlsx'
     
     if not os.path.exists(symptom_file) or not os.path.exists(medicine_file):
-        st.error("❌ Critical Error: Files missing. Ensure Excel and CSV are in the same directory.")
+        st.error("❌ Critical Error: Files missing. Check directory.")
         return {}, pd.DataFrame()
 
     try:
         disease_df = pd.read_csv(symptom_file, encoding='latin1', on_bad_lines='skip', engine='python')
         medicine_db = pd.read_excel(medicine_file)
-        
-        # Clean headers to remove invisible characters
         medicine_db.columns = [str(c).strip().replace('\xa0', '') for c in medicine_db.columns]
         
         disease_map = {}
@@ -61,29 +59,25 @@ disease_map, medicine_db = load_knowledge_bases()
 
 # --- 2. CORE SEARCH LOGIC ---
 
-def get_medication_recs(detected_disease):
-    """STRICT DETECTION-BASED SEARCH: Only recommends drugs for the detected condition."""
-    if medicine_db.empty or not detected_disease or detected_disease == "General Assessment":
+def get_medication_recs(detected_condition):
+    """Fetches drugs for the condition identified by either AI engine."""
+    if medicine_db.empty or not detected_condition or "General" in detected_condition or "Normal" in detected_condition:
         return []
     
-    primary_disease = str(detected_disease).lower().strip()
+    query = str(detected_condition).lower().strip()
     cols = list(medicine_db.columns)
     
-    # Assume Structure: Col 0: Drug Name, Col 1: Reason (Disease), Col 2: Description
-    name_col = cols[0]
-    reason_col = cols[1]
+    # Col 0: Drug Name, Col 1: Reason/Disease
+    name_col, reason_col = cols[0], cols[1]
     desc_col = cols[2] if len(cols) > 2 else cols[-1]
 
-    # FORCE SEARCH: Only find drugs where the 'Reason' matches the 'Detected Symptom'
-    mask = medicine_db[reason_col].astype(str).str.contains(primary_disease, case=False, na=False)
+    # Search the Reason column for the detected condition
+    mask = medicine_db[reason_col].astype(str).str.contains(query, case=False, na=False)
     results = medicine_db[mask].head(5)
 
     matches = []
     for _, row in results.iterrows():
-        matches.append({
-            'Drug_Name': row[name_col],
-            'Description': row[desc_col]
-        })
+        matches.append({'Drug_Name': row[name_col], 'Description': row[desc_col]})
     return matches
 
 def send_to_doctor(receiver_email, report, drug_list):
@@ -92,18 +86,17 @@ def send_to_doctor(receiver_email, report, drug_list):
     msg['From'] = st.secrets["EMAIL_USER"]
     msg['To'] = receiver_email
     med_text = "\n".join([f"- {m['Drug_Name']}: {m['Description'][:100]}..." for m in drug_list])
-    body = f"PATIENT: {report['name']}\nDETECTION: {report['symptom_disease']}\n\nTHERAPY:\n{med_text}"
+    body = f"PATIENT: {report['name']}\nDIAGNOSIS: {report['disease']}\nDETECTION: {report['symptom_disease']}\n\nTHERAPY:\n{med_text}"
     msg.set_content(body)
     try:
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
             smtp.login(st.secrets["EMAIL_USER"], st.secrets["EMAIL_PASS"])
-            smtp.send_message(msg)
-            return True
+            smtp.send_message(msg); return True
     except: return False
 
 # --- 3. UI ---
 st.title("🏥 Clinical AI: Intelligent Risk & Therapy Engine")
-st.caption("M.Sc. Data Science Project | Dual-Engine Diagnostics")
+st.caption("M.Sc. Data Science Project | Comprehensive Diagnostic System")
 st.divider()
 
 col_l, col_r = st.columns([1, 1], gap="large")
@@ -113,63 +106,60 @@ with col_l:
     doc_email = st.text_input("Doctor Email")
     p_age = st.number_input("Age", 1, 120, 23)
     v1, v2 = st.columns(2)
-    hr = v1.number_input("Heart Rate", value=72.0)
-    spo2 = v2.number_input("SpO2 %", value=98.0)
-    bps = v1.number_input("BP Systolic", value=120.0)
-    temp = v2.number_input("Temp °C", value=37.0)
+    hr = v1.number_input("Heart Rate", value=72.0), spo2 = v2.number_input("SpO2 %", value=98.0)
+    bps = v1.number_input("BP Systolic", value=120.0), temp = v2.number_input("Temp °C", value=37.0)
 
 with col_r:
     st.subheader("📋 Clinical Presentation")
-    s_input = st.text_area("Enter Symptoms (The system will analyze these to detect the disease)")
+    s_input = st.text_area("Enter Symptoms (System will match keywords to Disease Database)")
 
 # --- 4. EXECUTION ---
 st.divider()
 if st.button("RUN FULL DIAGNOSTIC & NOTIFY DOCTOR", type="primary"):
     if model and scaler:
-        # A. Vitals Engine (ML Model)
+        # A. Vitals Engine (ML)
         features = ['age', 'heart_rate', 'bp_systolic', 'bp_diastolic', 'spo2', 'temp', 'cholesterol', 'glucose', 'respiratory_rate']
         raw_v = [p_age, hr, bps, 80.0, spo2, temp, 190.0, 95.0, 16.0]
         input_df = pd.DataFrame([raw_v], columns=features)
-        
         scaled = scaler.transform(input_df)
         pred = model.predict(scaled, verbose=0)
-        idx = np.argmax(pred)
-        dl_disease = le.inverse_transform([idx])[0]
-        prob = pred[0][idx] * 100
+        dl_disease = le.inverse_transform([np.argmax(pred)])[0]
+        prob = np.max(pred) * 100
         
-        # B. Symptom Engine (Detection)
+        # B. Symptom Engine (Keyword Match)
         user_text = s_input.lower()
         matched_scores = {d: sum(1 for sym in s_set if sym in user_text) for d, s_set in disease_map.items()}
         res_disease = max(matched_scores, key=matched_scores.get, default="General Assessment") if any(matched_scores.values()) else "General Assessment"
         
-        # C. Clinical Safety Check
-        if temp >= 40.0:
-            dl_disease = "Hyperpyrexia (Critical)"
-            prob = 100.0
-        
+        # C. Triage
         urgency = "IMMEDIATE ER" if spo2 < 90 or bps > 175 or temp >= 38.5 else "Stable"
 
-        # D. Display Results
+        # D. Report
         st.markdown(f"""<div class="report-container"><h2 style='text-align: center;'>Clinical Diagnostic Report</h2><hr>
             <p><b>AI Diagnosis (Vitals):</b> {dl_disease} ({prob:.2f}%)</p>
             <p><b>Symptom Detection:</b> {res_disease}</p>
             <p><b>Status:</b> <span style="color: {'red' if urgency != 'Stable' else 'green'}; font-weight: bold;">{urgency}</span></p></div>""", unsafe_allow_html=True)
 
-        # E. Therapy (STRICTLY FROM DETECTION)
-        # Here we only use res_disease (the symptom detection result)
-        meds = get_medication_recs(res_disease)
+        # E. DUAL-ENGINE THERAPY LOGIC (Crucial Update)
+        # 1. First, check if Symptom Engine found something specific.
+        # 2. If not, check if Vitals Engine found something (and it's not "Normal").
+        final_condition = None
+        if res_disease != "General Assessment":
+            final_condition = res_disease
+        elif dl_disease != "Normal":
+            final_condition = dl_disease
+        
+        meds = get_medication_recs(final_condition)
         
         if meds:
-            st.subheader(f"💊 Recommended Therapy for {res_disease}")
+            st.subheader(f"💊 Recommended Therapy for {final_condition}")
             for m in meds: 
                 st.markdown(f'<div class="drug-card"><b>{m["Drug_Name"]}</b><br><small>{m["Description"]}</small></div>', unsafe_allow_html=True)
         else:
-            st.warning("No specific medications found for the detected condition.")
+            st.warning("No specific medications found for the current diagnosis.")
         
-        # F. Email
         if doc_email:
-            with st.spinner("Sending alert..."):
-                if send_to_doctor(doc_email, {'name': p_name, 'age': p_age, 'disease': dl_disease, 'urgency': urgency, 'symptom_disease': res_disease}, meds):
-                    st.success("Doctor has been notified! ✅")
-    else:
-        st.error("Missing Assets.")
+            with st.spinner("Notifying physician..."):
+                if send_to_doctor(doc_email, {'name': p_name, 'disease': dl_disease, 'urgency': urgency, 'symptom_disease': res_disease}, meds):
+                    st.success("Alert sent! ✅")
+    else: st.error("Missing Assets.")
