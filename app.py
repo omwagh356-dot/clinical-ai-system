@@ -104,10 +104,12 @@ st.markdown("**Developer:** Onkar Suresh Wagh")
 st.divider()
 
 # --- 5. UI INPUTS ---
+# --- 5. UI INPUTS ---
 col_l, col_r = st.columns([1, 1], gap="large")
+
 with col_l:
     st.subheader("👤 Patient Identity & Vitals")
-    p_name = st.text_input("Full Name")
+    p_name = st.text_input("Full Name", "Onkar Wagh")
     p_age = st.number_input("Age", 1, 120, 23)
     v1, v2 = st.columns(2)
     hr = v1.number_input("Heart Rate (BPM)", 30.0, 250.0, 72.0)
@@ -117,9 +119,32 @@ with col_l:
 
 with col_r:
     st.subheader("📋 Clinical Presentation")
-    s_input = st.text_area("Describe Symptoms (e.g. 'I have joint stiffness and muscle pain')")
-    doc_email = st.text_input("Doctor Email for Alerts")
+    
+    # 1. Load the features (symptoms) your model knows
+    if assets[5] is not None:
+        symptom_list = assets[5] # This is your symptom_features.pkl
+        
+        # 2. Multi-select Dropdown
+        selected = st.multiselect(
+            "Quick Select Symptoms:", 
+            options=symptom_list,
+            help="Select symptoms to automatically add them to the description box below."
+        )
+        
+        # 3. Create the combined text for the box
+        default_text = ", ".join(selected)
+    else:
+        default_text = ""
 
+    # 4. The Text Area (populated by the dropdown)
+    s_input = st.text_area(
+        "Clinical Description", 
+        value=default_text,
+        placeholder="Selected symptoms will appear here. You can also type manually.",
+        height=150
+    )
+    
+    doc_email = st.text_input("Doctor Email for Alerts")
 # --- 6. EXECUTION ---
 st.divider()
 if st.button("RUN FULL DIAGNOSTIC", type="primary"):
