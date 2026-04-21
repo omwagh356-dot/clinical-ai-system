@@ -32,7 +32,7 @@ def load_ml_assets():
 @st.cache_data
 def load_knowledge_bases():
     symptom_file = 'DiseaseAndSymptoms.csv'
-    medicine_file = 'Medicine_description (2).xlsx - Sheet1.csv'
+    medicine_file = 'Medicine_description.xlsx'
     try:
         disease_df = pd.read_csv(symptom_file, encoding='latin1', on_bad_lines='skip')
         medicine_db = pd.read_csv(medicine_file, encoding='latin1', on_bad_lines='skip')
@@ -67,7 +67,7 @@ st.divider()
 col_l, col_r = st.columns([1, 1], gap="large")
 with col_l:
     st.subheader("👤 Patient Identity & Vitals")
-    p_name = st.text_input("Full Name", "Patient")
+    p_name = st.text_input("Full Name")
     doc_email = st.text_input("Doctor Email")
     p_age = st.number_input("Age", 1, 120, 23)
     v1, v2 = st.columns(2)
