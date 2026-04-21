@@ -6,6 +6,7 @@ import os
 import smtplib
 from email.message import EmailMessage
 from tensorflow.keras.models import load_model
+import io
 
 # --- 1. CONFIG & ASSETS ---
 st.set_page_config(page_title="Clinical AI Portal", layout="wide", page_icon="🏥")
@@ -14,6 +15,7 @@ st.markdown("""
     <style>
     .report-container { border: 2px solid #1a73e8; padding: 20px; border-radius: 10px; margin-top: 20px; color: inherit; }
     .drug-card { background-color: rgba(26, 115, 232, 0.1); border-left: 5px solid #1a73e8; padding: 12px; margin-bottom: 10px; border-radius: 5px; }
+    .triage-alert { background-color: #fce8e6; border: 1px solid #d93025; color: #d93025; padding: 15px; border-radius: 5px; font-weight: bold; }
     .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #1a73e8; color: white; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
@@ -25,20 +27,15 @@ def load_ml_assets():
         scaler = joblib.load("scaler.pkl")
         le = joblib.load("label_encoder.pkl")
         return model, scaler, le
-    except Exception as e:
-        st.warning(f"ML Assets (model.h5) not found: {e}")
-        return None, None, None
+    except: return None, None, None
 
 @st.cache_data
 def load_knowledge_bases():
     symptom_file = 'DiseaseAndSymptoms.csv'
-    medicine_file = 'Medicine_description.xlsx'
-    if not os.path.exists(symptom_file) or not os.path.exists(medicine_file):
-        st.error("❌ Critical Error: Files missing in directory.")
-        return {}, pd.DataFrame()
+    medicine_file = 'Medicine_description (2).xlsx - Sheet1.csv'
     try:
-        disease_df = pd.read_csv(symptom_file, encoding='latin1', on_bad_lines='skip', engine='python')
-        medicine_db = pd.read_excel(medicine_file)
+        disease_df = pd.read_csv(symptom_file, encoding='latin1', on_bad_lines='skip')
+        medicine_db = pd.read_csv(medicine_file, encoding='latin1', on_bad_lines='skip')
         medicine_db.columns = [str(c).strip().replace('\xa0', '') for c in medicine_db.columns]
         disease_map = {}
         for _, row in disease_df.iterrows():
@@ -47,8 +44,7 @@ def load_knowledge_bases():
             if d not in disease_map: disease_map[d] = set(s)
             else: disease_map[d].update(s)
         return disease_map, medicine_db
-    except Exception as e:
-        st.error(f"Data Load Error: {e}"); return {}, pd.DataFrame()
+    except: return {}, pd.DataFrame()
 
 model, scaler, le = load_ml_assets()
 disease_map, medicine_db = load_knowledge_bases()
@@ -56,100 +52,81 @@ disease_map, medicine_db = load_knowledge_bases()
 # --- 2. CORE LOGIC ---
 
 def get_medication_recs(detected_condition):
-    """Fetches drugs for the condition identified by either AI engine."""
-    if medicine_db.empty or not detected_condition or "General" in str(detected_condition) or "Normal" in str(detected_condition):
-        return []
-    
+    if medicine_db.empty or not detected_condition or "General" in str(detected_condition): return []
     query = str(detected_condition).lower().strip()
     cols = list(medicine_db.columns)
-    name_col, reason_col = cols[0], cols[1]
-    desc_col = cols[2] if len(cols) > 2 else cols[-1]
-
-    mask = medicine_db[reason_col].astype(str).str.contains(query, case=False, na=False)
+    mask = medicine_db[cols[1]].astype(str).str.contains(query, case=False, na=False)
     results = medicine_db[mask].head(5)
-    matches = []
-    for _, row in results.iterrows():
-        matches.append({'Drug_Name': row[name_col], 'Description': row[desc_col]})
-    return matches
-
-def send_to_doctor(receiver_email, report, drug_list):
-    msg = EmailMessage()
-    msg['Subject'] = f"🚨 {report['urgency']} Alert: {report['name']}"
-    msg['From'] = st.secrets["EMAIL_USER"]
-    msg['To'] = receiver_email
-    med_text = "\n".join([f"- {m['Drug_Name']}: {m['Description'][:100]}..." for m in drug_list])
-    body = f"PATIENT: {report['name']}\nDIAGNOSIS: {report['disease']}\nDETECTION: {report['symptom_disease']}\n\nTHERAPY:\n{med_text}"
-    msg.set_content(body)
-    try:
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-            smtp.login(st.secrets["EMAIL_USER"], st.secrets["EMAIL_PASS"])
-            smtp.send_message(msg); return True
-    except: return False
+    return [{'Drug_Name': row[cols[0]], 'Description': row[cols[2]]} for _, row in results.iterrows()]
 
 # --- 3. UI ---
 st.title("🏥 Clinical AI: Intelligent Risk & Therapy Engine")
-st.caption("M.Sc. Data Science | Dual-Engine Diagnostic System")
+st.caption("M.Sc. Final Project | Dual-Engine Diagnostic Framework")
 st.divider()
 
 col_l, col_r = st.columns([1, 1], gap="large")
 with col_l:
     st.subheader("👤 Patient Identity & Vitals")
-    p_name = st.text_input("Full Name", "Patient Name")
+    p_name = st.text_input("Full Name", "Patient")
     doc_email = st.text_input("Doctor Email")
     p_age = st.number_input("Age", 1, 120, 23)
     v1, v2 = st.columns(2)
-    hr = v1.number_input("Heart Rate", value=72.0)
-    spo2 = v2.number_input("SpO2 %", value=98.0)
-    bps = v1.number_input("BP Systolic", value=120.0)
-    temp = v2.number_input("Temp °C", value=37.0)
+    hr = v1.number_input("Heart Rate", 72.0)
+    spo2 = v2.number_input("SpO2 %", 98.0)
+    bps = v1.number_input("BP Systolic", 120.0)
+    temp = v2.number_input("Temp °C", 37.0)
 
 with col_r:
     st.subheader("📋 Clinical Presentation")
-    s_input = st.text_area("Enter Symptoms (e.g. 'I feel very weak', 'joint pain')")
+    s_input = st.text_area("Describe Symptoms")
 
 # --- 4. EXECUTION ---
 st.divider()
-if st.button("RUN FULL DIAGNOSTIC & NOTIFY DOCTOR", type="primary"):
+if st.button("RUN FULL DIAGNOSTIC & GENERATE REPORT", type="primary"):
     if model and scaler:
-        # A. Vitals Engine
+        # A. Diagnostic Engines
         features = ['age', 'heart_rate', 'bp_systolic', 'bp_diastolic', 'spo2', 'temp', 'cholesterol', 'glucose', 'respiratory_rate']
         raw_v = [p_age, hr, bps, 80.0, spo2, temp, 190.0, 95.0, 16.0]
-        input_df = pd.DataFrame([raw_v], columns=features)
-        scaled = scaler.transform(input_df)
-        pred = model.predict(scaled, verbose=0)
-        dl_disease = le.inverse_transform([np.argmax(pred)])[0]
-        prob = np.max(pred) * 100
+        scaled = scaler.transform(pd.DataFrame([raw_v], columns=features))
+        dl_disease = le.inverse_transform([np.argmax(model.predict(scaled, verbose=0))])[0]
         
-        # B. Symptom Engine
         user_text = s_input.lower()
         matched_scores = {d: sum(1 for sym in s_set if sym in user_text) for d, s_set in disease_map.items()}
         res_disease = max(matched_scores, key=matched_scores.get, default="General Assessment") if any(matched_scores.values()) else "General Assessment"
         
-        # C. Overrides & Triage
-        if temp >= 40.0:
-            dl_disease = "Hyperpyrexia (Critical)"
-            prob = 100.0
-        urgency = "IMMEDIATE ER" if spo2 < 90 or bps > 175 or temp >= 38.5 else "Stable"
-
-        # D. Display Results
-        st.markdown(f"""<div class="report-container"><h2 style='text-align: center;'>Clinical Diagnostic Report</h2><hr>
-            <p><b>AI Diagnosis (Vitals):</b> {dl_disease} ({prob:.2f}%)</p>
-            <p><b>Symptom Detection:</b> {res_disease}</p>
-            <p><b>Status:</b> <span style="color: {'red' if urgency != 'Stable' else 'green'}; font-weight: bold;">{urgency}</span></p></div>""", unsafe_allow_html=True)
-
-        # E. Dual-Engine Medication Logic
-        final_condition = res_disease if res_disease != "General Assessment" else dl_disease
-        meds = get_medication_recs(final_condition)
+        # B. Triage & Next Step Logic
+        urgency = "IMMEDIATE ER" if spo2 < 90 or bps > 175 or temp >= 39.5 else "Urgent Consultation" if temp >= 38.0 else "Stable / Routine Follow-up"
         
+        # C. Report Display
+        st.markdown(f"""<div class="report-container"><h3>Clinical Diagnostic Report</h3><hr>
+            <p><b>Vitals Diagnosis:</b> {dl_disease}</p>
+            <p><b>Symptom Matching:</b> {res_disease}</p>
+            <p><b>Clinical Status:</b> {urgency}</p></div>""", unsafe_allow_html=True)
+
+        # D. ACTIONABLE NEXT STEPS
+        st.subheader("🚨 What you should do next:")
+        if "IMMEDIATE" in urgency:
+            st.markdown('<div class="triage-alert">CRITICAL: Visit the nearest Emergency Room immediately. Oxygen or IV fluids may be required.</div>', unsafe_allow_html=True)
+        elif "Urgent" in urgency:
+            st.info("Schedule an urgent appointment with your GP today. Monitor vitals every 4 hours.")
+        else:
+            st.success("Continue monitoring symptoms. If symptoms persist for >3 days, consult a physician.")
+
+        # E. Therapy
+        final_cond = res_disease if res_disease != "General Assessment" else dl_disease
+        meds = get_medication_recs(final_cond)
         if meds:
-            st.subheader(f"💊 Recommended Therapy for {final_condition}")
+            st.subheader(f"💊 Therapy Recommendation: {final_cond}")
             for m in meds: 
                 st.markdown(f'<div class="drug-card"><b>{m["Drug_Name"]}</b><br><small>{m["Description"]}</small></div>', unsafe_allow_html=True)
-        else:
-            st.info("No specific medications found for the current diagnosis.")
+
+        # F. REPORT DOWNLOAD (RESTORED)
+        report_text = f"Clinical AI Report\nPatient: {p_name}\nDiagnosis: {dl_disease}\nSymptom Detection: {res_disease}\nStatus: {urgency}\n\nRecommended Drugs:\n"
+        for m in meds: report_text += f"- {m['Drug_Name']}\n"
         
-        if doc_email:
-            with st.spinner("Notifying physician..."):
-                if send_to_doctor(doc_email, {'name': p_name, 'disease': dl_disease, 'urgency': urgency, 'symptom_disease': res_disease}, meds):
-                    st.success("Doctor alerted via email! ✅")
-    else: st.error("Missing model/assets.")
+        st.download_button(
+            label="📄 Download Diagnostic Report",
+            data=report_text,
+            file_name=f"Clinical_Report_{p_name}.txt",
+            mime="text/plain"
+        )
