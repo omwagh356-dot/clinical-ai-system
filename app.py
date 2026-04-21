@@ -126,30 +126,40 @@ with col_r:
 # --- 6. EXECUTION ---
 st.divider()
 if st.button("RUN FULL DIAGNOSTIC", type="primary"):
-    # Initialize variables to avoid NameError
-    v_diag, v_prob = "Not Analyzed", 0.0
-    s_diag, s_prob = "Not Analyzed", 0.0
+    
+    # 1. INITIALIZE ALL VARIABLES IMMEDIATELY
+    # This prevents the "NameError" by ensuring the variables exist
+    v_diag = "Not Assessed"
+    v_prob = 0.0
+    s_diag = "Not Assessed"
+    s_prob = 0.0
     med_list = []
     urgency = "Stable"
 
+    # 2. PROCEED WITH AI ENGINES
     if all(assets) and not medicine_db.empty:
         v_model, v_scaler, v_le, s_model, s_le, s_features = assets
         
         # A. Vitals Engine
-        v_features = ['age', 'heart_rate', 'bp_systolic', 'bp_diastolic', 'spo2', 'temp', 'cholesterol', 'glucose', 'respiratory_rate']
-        raw_v = [p_age, hr, bps, 80.0, spo2, temp, 190.0, 95.0, 16.0]
-        v_scaled = v_scaler.transform(pd.DataFrame([raw_v], columns=v_features))
-        v_preds = v_model.predict(v_scaled, verbose=0)
-        v_diag = v_le.inverse_transform([np.argmax(v_preds)])[0]
-        v_prob = np.max(v_preds) * 100
-        
+        try:
+            v_features = ['age', 'heart_rate', 'bp_systolic', 'bp_diastolic', 'spo2', 'temp', 'cholesterol', 'glucose', 'respiratory_rate']
+            raw_v = [p_age, hr, bps, 80.0, spo2, temp, 190.0, 95.0, 16.0]
+            v_scaled = v_scaler.transform(pd.DataFrame([raw_v], columns=v_features))
+            v_preds = v_model.predict(v_scaled, verbose=0)
+            
+            # Update the initialized variables
+            v_diag = v_le.inverse_transform([np.argmax(v_preds)])[0]
+            v_prob = np.max(v_preds) * 100
+        except Exception as e:
+            st.error(f"Vitals Engine Error: {e}")
+
         # B. Symptom Engine
         s_diag, s_prob = predict_symptoms(s_input, s_model, s_le, s_features)
 
-        # C. Urgency
+        # C. Urgency Logic
         urgency = "EMERGENCY" if spo2 < 90 or bps > 180 or temp >= 39.5 else "Stable"
 
-        # D. Display Report
+        # D. Display (This will now always find v_diag, even if it's "Not Assessed")
         st.markdown(f"""<div class="report-container">
             <h3 style='text-align: center;'>Clinical Diagnostic Report</h3><hr>
             <p><b>Vitals AI Prediction:</b> {v_diag} ({v_prob:.2f}%)</p>
@@ -157,6 +167,7 @@ if st.button("RUN FULL DIAGNOSTIC", type="primary"):
             <p><b>Status:</b> <span style="color:{'red' if urgency=='EMERGENCY' else 'green'}">{urgency}</span></p>
             </div>""", unsafe_allow_html=True)
 
+    
         if urgency == "EMERGENCY":
             st.error("🚨 CRITICAL: Immediate intervention required. Visit ER.")
         else:
