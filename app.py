@@ -181,19 +181,43 @@ if st.button("RUN FULL DIAGNOSTIC", type="primary"):
             st.info("✅ STABLE: Routine follow-up recommended.")
 
         # F. Therapy
-        st.subheader("💊 Therapy Recommendations")
-        found = [d for d in [v_diag, s_diag] if d not in ["Normal", "General Assessment"]]
-        med_list = []
-        cols = medicine_db.columns.tolist()
-        
-        for cond in found:
-            mask = medicine_db[cols[1]].astype(str).str.contains(str(cond), case=False, na=False)
-            results = medicine_db[mask].head(3)
-            for _, row in results.iterrows():
-                m = {'name': row[cols[0]], 'desc': row[cols[2]] if len(cols) > 2 else "N/A", 'for': cond}
-                med_list.append(m)
-                st.markdown(f'<div class="drug-card"><b>{m["name"]}</b> (Target: {m["for"]})<br><small>{m["desc"]}</small></div>', unsafe_allow_html=True)
+        # --- F. Therapy ---
+st.subheader("💊 Therapy Recommendations")
 
+# List of valid diagnoses from both engines
+valid_diagnoses = [d for d in [v_diag, s_diag] if d not in ["Normal", "General Assessment", "Inconclusive: Please provide more specific symptoms"]]
+
+if not valid_diagnoses:
+    st.info("💡 **General Advice:** No specific diagnosis confirmed. Please rest, stay hydrated, and consult a doctor if symptoms persist.")
+else:
+    med_found = False
+    # Ensure column names are mapped correctly based on your description
+    # Typically: Column 0 = Drug Name, Column 1 = Reason, Column 2 = Description
+    cols = medicine_db.columns.tolist()
+    
+    for cond in valid_diagnoses:
+        # Search the 'Reason' column for the condition name
+        # .str.contains allows for partial matches (e.g., 'Jaundice' matches 'Jaundice Treatment')
+        mask = medicine_db[cols[1]].astype(str).str.contains(str(cond), case=False, na=False)
+        results = medicine_db[mask].head(3)
+        
+        if not results.empty:
+            med_found = True
+            for _, row in results.iterrows():
+                drug_name = row[cols[0]]
+                reason = row[cols[1]]
+                description = row[cols[2]] if len(cols) > 2 else "No description available."
+                
+                st.markdown(f"""
+                <div class="drug-card">
+                    <b style="color:#1a73e8; font-size:1.1em;">{drug_name}</b><br>
+                    <small><b>Indication:</b> {reason}</small><br>
+                    <p style="margin-top:5px;">{description}</p>
+                </div>
+                """, unsafe_allow_html=True)
+
+    if not med_found:
+        st.warning(f"No specific medications found in the database for the detected conditions.")
         # G. Export
         report_txt = f"Patient: {p_name}\nVitals: {v_diag} ({v_prob:.2f}%)\nSymptoms: {s_diag}\nStatus: {urgency}"
         c1, c2 = st.columns(2)
