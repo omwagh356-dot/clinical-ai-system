@@ -33,7 +33,7 @@ def load_ml_assets():
 def load_knowledge_bases():
     files = os.listdir('.')
     sym_file = next((f for f in files if "DiseaseAndSymptoms" in f), 'DiseaseAndSymptoms.csv')
-    med_file = next((f for f in files if "Medicine_description" in f), 'Medicine_description.csv')
+    med_file = next((f for f in files if "Medicine_description" in f), 'Medicine_description.xlsx')
     
     try:
         # Load files and strip column names
@@ -87,7 +87,7 @@ st.divider()
 col_l, col_r = st.columns([1, 1], gap="large")
 with col_l:
     st.subheader("👤 Patient Identity & Vitals")
-    p_name = st.text_input("Patient Full Name", "Onkar Wagh")
+    p_name = st.text_input("Patient Full Name")
     p_age = st.number_input("Age", 1, 120, 23)
     v1, v2 = st.columns(2)
     hr = v1.number_input("Heart Rate (BPM)", min_value=30.0, max_value=250.0, value=72.0)
