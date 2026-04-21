@@ -92,8 +92,8 @@ with col_l:
     p_age = st.number_input("Age", 1, 120, 23)
     v1, v2 = st.columns(2)
     hr = v1.number_input("Heart Rate", 72.0)
-    spo2 = v2.number_input("SpO2 %", 98.0)
-    bps = v1.number_input("BP Systolic", 120.0)
+    spo2 = v2.number_input("SpO2 %", min_value=50.0, max_value=100.0, value=98.0)
+    bps = v1.number_input("BP Systolic",  min_value=10.0, max_value=200.0, value= 120.0)
     temp = v2.number_input("Temp °C", 37.0)
 
 with col_r:
