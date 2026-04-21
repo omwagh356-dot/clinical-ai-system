@@ -58,12 +58,9 @@ def get_clean_tokens(text):
     return text.split()
 
 def predict_symptoms(user_input, s_model, s_le, s_features):
-    # Standardize input
     tokens = [t.strip().lower().replace("_", " ") for t in user_input.split(",")]
-    
     input_vector = np.zeros(len(s_features))
     
-    # STRICT MATCHING: Only flip to 1 if the exact symptom name is found
     for i, feature in enumerate(s_features):
         if feature.lower().replace("_", " ") in tokens:
             input_vector[i] = 1
@@ -71,11 +68,14 @@ def predict_symptoms(user_input, s_model, s_le, s_features):
     if np.sum(input_vector) == 0:
         return "General Assessment", 0.0
     
-    # Predict with Probability
     pred_prob = s_model.predict_proba([input_vector])
     idx = np.argmax(pred_prob)
-    disease = s_le.inverse_transform([idx])[0]
     confidence = np.max(pred_prob) * 100
+    disease = s_le.inverse_transform([idx])[0]
+
+    # LOGIC FIX: If confidence is low, don't give a scary diagnosis
+    if confidence < 70 and disease in ["AIDS", "paralysis ", "Hypertension "]:
+        return "General Viral Fever / Malaise", confidence
     
     return disease, confidence
 
