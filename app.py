@@ -21,48 +21,62 @@ st.markdown("""
 
 # --- 2. ASSET LOADING ---
 @st.cache_resource
-def load_ml_assets():
+def load_all_assets():
     try:
-        model = load_model("model/model.h5")
-        scaler = joblib.load("scaler.pkl")
-        le = joblib.load("label_encoder.pkl")
-        return model, scaler, le
-    except: return None, None, None
+        # Vitals Engine (Deep Learning)
+        v_model = load_model("model/model.h5")
+        v_scaler = joblib.load("scaler.pkl")
+        v_le = joblib.load("label_encoder.pkl")
+        
+        # Symptom Engine (Trained Random Forest)
+        s_model = joblib.load("symptom_model.pkl")
+        s_le = joblib.load("symptom_encoder.pkl")
+        s_features = joblib.load("symptom_features.pkl")
+        
+        return v_model, v_scaler, v_le, s_model, s_le, s_features
+    except Exception as e:
+        st.error(f"Error loading models: {e}")
+        return None, None, None, None, None, None
 
 @st.cache_data
-def load_knowledge_bases():
-    sym_file = 'DiseaseAndSymptoms.csv'
-    med_file = 'Medicine_description.xlsx'
-    
+def load_medicine_db():
     try:
-        # Load Symptoms (CSV)
-        disease_df = pd.read_csv(sym_file, encoding='latin1')
-        disease_map = {}
-        for _, row in disease_df.iterrows():
-            d = str(row['Disease']).strip()
-            s = [str(val).strip().lower().replace("_", " ") for val in row[1:] if pd.notna(val)]
-            if d not in disease_map: disease_map[d] = set(s)
-            else: disease_map[d].update(s)
-            
-        # Load Medicine (Excel)
-        medicine_db = pd.read_excel(med_file)
-        medicine_db.columns = [str(c).strip() for c in medicine_db.columns]
-        
-        return disease_map, medicine_db
-    except Exception as e:
-        st.error(f"File Loading Error: {e}. Ensure 'openpyxl' is installed.")
-        return {}, pd.DataFrame()
+        df = pd.read_excel('Medicine_description.xlsx')
+        df.columns = [str(c).strip() for c in df.columns]
+        return df
+    except:
+        return pd.DataFrame()
 
-model_assets = load_ml_assets()
-disease_map, medicine_db = load_knowledge_bases()
+assets = load_all_assets()
+medicine_db = load_medicine_db()
 
-# --- 3. CORE LOGIC ---
+# --- 3. LOGIC FUNCTIONS ---
 
 def get_clean_tokens(text):
-    stop_words = {'i', 'am', 'have', 'having', 'with', 'a', 'the', 'is', 'feeling', 'symptoms', 'of', 'and', 'my', 'in', 'very', 'bad'}
-    text = text.lower()
+    text = text.lower().replace("_", " ")
     text = re.sub(r'[^\w\s]', '', text)
-    return [w for w in text.split() if w not in stop_words]
+    return text.split()
+
+def predict_symptoms(user_input, s_model, s_le, s_features):
+    """Converts text to binary vector and predicts using trained RF model"""
+    tokens = get_clean_tokens(user_input)
+    # Create empty vector of 132 zeros (or whatever your feature count is)
+    input_vector = np.zeros(len(s_features))
+    
+    # Fill 1 if symptom token is found in the feature list
+    for i, feature in enumerate(s_features):
+        if feature in tokens or any(t in feature for t in tokens):
+            input_vector[i] = 1
+            
+    # Predict
+    if np.sum(input_vector) == 0:
+        return "General Assessment", 0.0
+    
+    pred_prob = s_model.predict_proba([input_vector])
+    idx = np.argmax(pred_prob)
+    disease = s_le.inverse_transform([idx])[0]
+    confidence = np.max(pred_prob) * 100
+    return disease, confidence
 
 def send_alert(receiver_email, report_data, meds):
     msg = EmailMessage()
@@ -70,7 +84,7 @@ def send_alert(receiver_email, report_data, meds):
     msg['From'] = st.secrets.get("EMAIL_USER", "clinical-ai@system.com")
     msg['To'] = receiver_email
     med_text = "\n".join([f"- {m['name']} (for {m['for']})" for m in meds])
-    body = f"Patient: {report_data['name']}\nVitals Diag: {report_data['v_diag']} ({report_data['v_prob']})\nSymptom Diag: {report_data['s_diag']}\nStatus: {report_data['urgency']}\n\nTherapy:\n{med_text}"
+    body = f"Patient: {report_data['name']}\nVitals Diag: {report_data['v_diag']} ({report_data['v_prob']})\nSymptom Diag: {report_data['s_diag']} ({report_data['s_prob']})\nStatus: {report_data['urgency']}\n\nTherapy:\n{med_text}"
     msg.set_content(body)
     try:
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
@@ -98,28 +112,25 @@ with col_l:
 
 with col_r:
     st.subheader("📋 Clinical Presentation")
-    s_input = st.text_area("Describe Symptoms")
+    s_input = st.text_area("Describe Symptoms (e.g. 'I have joint stiffness and muscle pain')")
     doc_email = st.text_input("Doctor Email for Alerts")
 
 # --- 6. EXECUTION ---
 st.divider()
 if st.button("RUN FULL DIAGNOSTIC", type="primary"):
-    if model_assets[0] is not None and not medicine_db.empty:
-        # A. Vitals Engine
+    if all(assets) and not medicine_db.empty:
+        v_model, v_scaler, v_le, s_model, s_le, s_features = assets
+        
+        # A. Vitals Engine (Deep Learning)
         features = ['age', 'heart_rate', 'bp_systolic', 'bp_diastolic', 'spo2', 'temp', 'cholesterol', 'glucose', 'respiratory_rate']
         raw_v = [p_age, hr, bps, 80.0, spo2, temp, 190.0, 95.0, 16.0]
-        scaled = model_assets[1].transform(pd.DataFrame([raw_v], columns=features))
-        preds = model_assets[0].predict(scaled, verbose=0)
-        idx = np.argmax(preds)
-        dl_disease = model_assets[2].inverse_transform([idx])[0]
-        v_prob = preds[0][idx] * 100
+        v_scaled = v_scaler.transform(pd.DataFrame([raw_v], columns=features))
+        v_preds = v_model.predict(v_scaled, verbose=0)
+        v_diag = v_le.inverse_transform([np.argmax(v_preds)])[0]
+        v_prob = np.max(v_preds) * 100
         
-        # B. Symptom Engine
-        tokens = get_clean_tokens(s_input)
-        matched_scores = {d: (15 if d.lower() in " ".join(tokens) else 0) + 
-                          sum(1 for token in tokens for sym in s_set if token in sym) 
-                          for d, s_set in disease_map.items()}
-        res_disease = max(matched_scores, key=matched_scores.get) if any(v > 0 for v in matched_scores.values()) else "General Assessment"
+        # B. Symptom Engine (Trained Model)
+        s_diag, s_prob = predict_symptoms(s_input, s_model, s_le, s_features)
 
         # C. Status
         urgency = "EMERGENCY" if spo2 < 90 or bps > 180 or temp >= 39.5 else "Stable"
@@ -127,12 +138,12 @@ if st.button("RUN FULL DIAGNOSTIC", type="primary"):
         # D. Display
         st.markdown(f"""<div class="report-container">
             <h3 style='text-align: center;'>Clinical Diagnostic Report</h3><hr>
-            <p><b>Vitals Prediction:</b> {dl_disease} ({v_prob:.2f}%)</p>
-            <p><b>Symptom Detection:</b> {res_disease}</p>
+            <p><b>Vitals AI Prediction:</b> {v_diag} ({v_prob:.2f}%)</p>
+            <p><b>Symptom AI Prediction:</b> {s_diag} {f'({s_prob:.2f}%)' if s_prob > 0 else ''}</p>
             <p><b>Status:</b> <span style="color:{'red' if urgency=='EMERGENCY' else 'green'}">{urgency}</span></p>
             </div>""", unsafe_allow_html=True)
 
-        # E. Action Plan
+        # E. Insights
         st.subheader("🛑 Actionable Insights")
         if urgency == "EMERGENCY":
             st.error("🚨 CRITICAL: Immediate intervention required. Visit ER.")
@@ -141,14 +152,11 @@ if st.button("RUN FULL DIAGNOSTIC", type="primary"):
 
         # F. Therapy
         st.subheader("💊 Therapy Recommendations")
-        found = [d for d in [dl_disease, res_disease] if d not in ["Normal", "General Assessment"]]
+        found = [d for d in [v_diag, s_diag] if d not in ["Normal", "General Assessment"]]
         med_list = []
-        
-        # Explicit column mapping based on your file structure
-        # Expected: Drug Name, Reason, Description
         cols = medicine_db.columns.tolist()
+        
         for cond in found:
-            # Search in the 'Reason' column (index 1)
             mask = medicine_db[cols[1]].astype(str).str.contains(str(cond), case=False, na=False)
             results = medicine_db[mask].head(3)
             for _, row in results.iterrows():
@@ -157,14 +165,14 @@ if st.button("RUN FULL DIAGNOSTIC", type="primary"):
                 st.markdown(f'<div class="drug-card"><b>{m["name"]}</b> (Target: {m["for"]})<br><small>{m["desc"]}</small></div>', unsafe_allow_html=True)
 
         # G. Export
-        report_txt = f"Patient: {p_name}\nVitals: {dl_disease} ({v_prob:.2f}%)\nSymptoms: {res_disease}\nStatus: {urgency}"
+        report_txt = f"Patient: {p_name}\nVitals: {v_diag} ({v_prob:.2f}%)\nSymptoms: {s_diag}\nStatus: {urgency}"
         c1, c2 = st.columns(2)
         with c1: st.download_button("📄 Download Report", report_txt, file_name=f"Report_{p_name}.txt")
         with c2:
             if doc_email:
                 with st.spinner("Sending Email Alert..."):
-                    rep = {'name':p_name, 'v_diag':dl_disease, 'v_prob':f"{v_prob:.2f}%", 's_diag':res_disease, 'urgency':urgency}
+                    rep = {'name':p_name, 'v_diag':v_diag, 'v_prob':f"{v_prob:.2f}%", 's_diag':s_diag, 's_prob':f"{s_prob:.2f}%", 'urgency':urgency}
                     if send_alert(doc_email, rep, med_list):
                         st.success("Alert sent to physician!")
     else:
-        st.error("Assets or 'Medicine_description.xlsx' not found.")
+        st.error("Assets or Data missing. Ensure 'symptom_model.pkl' etc. are in the root folder.")
