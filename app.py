@@ -80,9 +80,9 @@ def send_alert(receiver_email, report_data, meds):
 
 # --- 4. HEADER ---
 st.title("🏥 Clinical AI: Intelligent Risk & Therapy Engine")
-st.markdown("*Onkar Suresh Wagh | M.Sc. Data Science Final Project*")
+st.markdown("### **M.Sc. Data Science Final Project**")
+st.markdown("**Developer:** Onkar Suresh Wagh")
 st.divider()
-
 # --- 5. UI INPUTS ---
 col_l, col_r = st.columns([1, 1], gap="large")
 with col_l:
