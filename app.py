@@ -59,35 +59,38 @@ def load_clinical_data():
     disease_df = pd.read_csv('DiseaseAndSymptoms.csv')
     disease_df['Disease'] = disease_df['Disease'].astype(str).str.strip().str.title()
     
-    # 2. Load Medicine data with robust cleaning
+    # 2. Load Medicine data with advanced cleanup
     file_path = 'Medicine_description.xlsx'
     try:
-        # We use latin1 to handle Excel special characters that break UTF-8
-        med_db = pd.read_csv(file_path, encoding='latin1', on_bad_lines='skip', engine='python')
+        # Load using latin1 to prevent crash on Excel special characters
+        df = pd.read_csv(file_path, encoding='latin1', on_bad_lines='skip', engine='python')
         
-        # --- THE FIX: Clean all column headers ---
-        # This removes hidden spaces, tabs, and BOM characters
-        med_db.columns = med_db.columns.str.strip()
+        # --- THE FIX: Standardize all column headers ---
+        # 1. Strip whitespace
+        # 2. Remove invisible characters (like BOM)
+        df.columns = df.columns.str.strip().str.replace('ï»¿', '')
         
-        # Search for 'Reason' even if it is lowercase or misspelled
-        actual_cols = {col.lower(): col for col in med_db.columns}
+        # 3. Handle case-sensitivity (find 'reason', 'Reason', 'REASON')
+        actual_cols = {col.lower(): col for col in df.columns}
         if 'reason' in actual_cols:
-            # Force rename it to exactly 'Reason' so your code works
-            med_db.rename(columns={actual_cols['reason']: 'Reason'}, inplace=True)
+            df.rename(columns={actual_cols['reason']: 'Reason'}, inplace=True)
         else:
-            # If still not found, show a warning so you can see the real names
-            st.error(f"Column 'Reason' not found. Available columns: {list(med_db.columns)}")
-            return disease_df, pd.DataFrame(columns=['Drug_Name', 'Reason', 'Description'])
+            # Emergency Fallback: If we can't find it, use the 2nd column (index 1) 
+            # as 'Reason' assuming Drug_Name is first.
+            df.rename(columns={df.columns[1]: 'Reason'}, inplace=True)
+            st.warning(f"⚠️ Column 'Reason' not found exactly. Mapping '{df.columns[1]}' as Reason.")
 
-        # Final string normalization
-        med_db['Reason'] = med_db['Reason'].astype(str).str.strip().str.title()
-        
+        # Final string cleaning
+        df['Reason'] = df['Reason'].astype(str).str.strip().str.title()
+        return disease_df, df
+
     except Exception as e:
         st.error(f"Failed to load medicine file: {e}")
+        # Create empty structure so app doesn't crash
         return disease_df, pd.DataFrame(columns=['Drug_Name', 'Reason', 'Description'])
-    
-    return disease_df, med_db
 
+# --- GLOBAL ASSIGNMENT ---
+disease_db, med_db = load_clinical_data()
 try:
     from drug_module import check_drugs
     from explain import explain_values
