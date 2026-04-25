@@ -8,42 +8,71 @@ import joblib
 import smtplib
 from email.message import EmailMessage
 
-# --- 1. CORE UTILITY FUNCTIONS ---
+# --- 1. CORE FUNCTIONS (Must be at top to avoid NameErrors) ---
 
-def get_triage_status(disease, prob, spo2, bps):
-    """Innovative Triage Logic: Determines urgency based on AI + Vitals."""
-    if spo2 < 88 or bps > 190 or (disease != "Normal" and prob > 90):
-        return "🔴 CRITICAL", "Immediate Physician Intervention Required", "#ff4b4b"
-    elif prob > 70:
-        return "🟡 URGENT", "Priority Nursing Assessment", "#ffa500"
-    else:
-        return "🟢 STABLE", "Routine Monitoring", "#28a745"
+def create_clinical_report(report, reasons, warnings):
+    """Generates a professional HTML diagnostic report."""
+    return f"""
+    <div style='font-family:Arial; border:2px solid #333; padding:20px; border-radius:10px;'>
+        <h1 style='color:#1a73e8; text-align:center;'>Clinical AI Diagnostic Report</h1>
+        <hr>
+        <p><b>Patient:</b> {report['Name']} | <b>Age:</b> {report['Age']} | <b>Gender:</b> {report['Gender']}</p>
+        <div style='background:#f0f2f6; padding:15px; border-radius:10px;'>
+            <h3 style='margin:0;'>AI Prediction: {report['Disease']} ({report['Prob']}%)</h3>
+            <p style='color:#d93025; font-weight:bold;'>Triage Status: {report['Risk']}</p>
+        </div>
+        <h4>📊 Clinical Vitals Analysis</h4>
+        <ul>{"".join([f"<li>{r}</li>" for r in reasons])}</ul>
+        <h4>💊 Safety Alerts</h4>
+        <ul>{"".join([f"<li>⚠️ {w}</li>" for w in warnings]) if warnings else "<li>No immediate drug-vital risks flagged</li>"}</ul>
+        <p><b>Action Plan:</b> {report['Urgency']}</p>
+    </div>
+    """
 
-def create_pdf_report(report, reasons, warnings):
-    return f"""<div style='font-family:Arial; border:2px solid #333; padding:20px; border-radius:10px;'>
-    <h2 style='color:#1a73e8;'>Clinical AI Diagnostic Report</h2>
-    <hr>
-    <p><b>Patient:</b> {report.get('Name')} | <b>Age:</b> {report.get('Age')}</p>
-    <p><b>Diagnosis:</b> {report.get('Disease')} ({report.get('Prob')}%)</p>
-    <p><b>Triage:</b> {report.get('Risk')}</p>
-    </div>"""
+def send_to_physician(receiver, report, reasons):
+    """Handles secure SMTP transmission to the doctor."""
+    msg = EmailMessage()
+    msg['Subject'] = f"🚨 {report['Risk']} Clinical Alert - {report['Name']}"
+    msg['From'] = st.secrets.get("EMAIL_USER", "")
+    msg['To'] = receiver
+    
+    body = f"""OFFICIAL CLINICAL REPORT
+-------------------------------
+PATIENT: {report['Name']} ({report['Age']}yr {report['Gender']})
+PREDICTION: {report['Disease']} ({report['Prob']}%)
+TRIAGE: {report['Risk']}
+
+VITAL ANALYSIS:
+{chr(10).join(['- ' + r for r in reasons])}
+-------------------------------
+Generated via Clinical AI CDSS."""
+    
+    msg.set_content(body)
+    try:
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+            smtp.login(st.secrets["EMAIL_USER"], st.secrets["EMAIL_PASS"])
+            smtp.send_message(msg)
+        return True
+    except:
+        return False
 
 # --- 2. DATA & ASSET LOADING ---
 
 @st.cache_data
 def load_clinical_data():
+    # Load Disease Knowledge
     disease_df = pd.read_csv('DiseaseAndSymptoms.csv')
     disease_df['Disease'] = disease_df['Disease'].astype(str).str.strip().str.title()
     
+    # Load Medicine Knowledge (Handling your 'res' column)
     try:
-        # Auto-detecting the 'res' column you created
         med_df = pd.read_csv('Medicine_description.xlsx', sep=None, engine='python', encoding='latin1')
         med_df.columns = [col.strip().replace('ï»¿', '') for col in med_df.columns]
         
-        # Mapping your new 'res' column to 'Reason' internally
+        # Mapping 'res' or position 1 to 'Reason'
         if 'res' in med_df.columns:
             med_df = med_df.rename(columns={'res': 'Reason'})
-        elif len(med_df.columns) > 1:
+        else:
             med_df = med_df.rename(columns={med_df.columns[1]: 'Reason'})
             
         med_df['Reason'] = med_df['Reason'].fillna('Unknown').astype(str).str.strip().str.title()
@@ -58,42 +87,49 @@ def load_ml_assets():
     label_encoder = joblib.load("label_encoder.pkl")
     return model, scaler, label_encoder
 
+# Initialize
 model, scaler, label_encoder = load_ml_assets()
 disease_db, med_db = load_clinical_data()
 
-# --- 3. UI DASHBOARD ---
-st.set_page_config(page_title="Advanced Clinical AI", layout="wide")
+try:
+    from drug_module import check_drugs
+    from explain import explain_values
+except:
+    st.error("Missing Logic Modules.")
+
+# --- 3. UI LAYOUT ---
+st.set_page_config(page_title="Advanced CDSS", layout="wide")
 st.title("🛡️ Enterprise Clinical Decision Support System")
 
-c1, c2 = st.columns(2)
+c1, c2 = st.columns([1, 1.2])
+
 with c1:
     st.subheader("👤 Patient Identity")
     name = st.text_input("Full Name")
+    doc_email = st.text_input("Doctor's Email")
+    gender = st.selectbox("Gender", ["Male", "Female", "Other"])
     age = st.number_input("Age", 1, 120, 30)
-    hr = st.number_input("Heart Rate", value=72.0)
-    bps = st.number_input("BP Systolic", value=120.0)
-    spo2 = st.number_input("SpO2 %", value=98.0)
-    temp = st.number_input("Temp °C", value=37.0)
-    gluc = st.number_input("Glucose", value=95.0)
+    
+    st.subheader("📉 Clinical Vitals")
+    v1, v2, v3 = st.columns(3)
+    hr = v1.number_input("Heart Rate", value=72.0)
+    bps = v1.number_input("BP Systolic", value=120.0)
+    spo2 = v2.number_input("SpO2 %", value=98.0)
+    bpd = v2.number_input("BP Diastolic", value=80.0)
+    temp = v3.number_input("Temp °C", value=37.0)
+    gluc = v3.number_input("Glucose", value=95.0)
 
 with c2:
-    st.subheader("🧪 Contextual History")
-    curr_diseases = st.text_area("Symptoms (e.g. skin_rash, itching)")
-    curr_drugs = st.text_area("Current Medications")
-    
-    # Innovative Search Tool: Quick Drug Lookup
-    st.markdown("🔍 **Quick Med Search**")
-    search_q = st.text_input("Search 22,000+ Drugs by Condition")
-    if search_q:
-        res = med_db[med_db['Reason'].str.contains(search_q, case=False, na=False)].head(3)
-        for _, r in res.iterrows():
-            st.caption(f"💊 {r['Drug_Name']}: {r['Description'][:100]}...")
+    st.subheader("🧪 Contextual Data")
+    curr_symptoms = st.text_area("Reported Symptoms (comma separated)")
+    curr_meds = st.text_area("Current Medications")
+    curr_allergies = st.text_area("Allergies")
 
-# --- 4. ANALYTICS ENGINE ---
+# --- 4. EXECUTION ENGINE ---
 st.divider()
 if st.button("🚀 EXECUTE MULTIMODAL DIAGNOSTIC", type="primary", use_container_width=True):
     # ML Prediction
-    raw_vitals = [age, hr, bps, 80.0, spo2, temp, 190.0, gluc, 16.0] 
+    raw_vitals = [age, hr, bps, bpd, spo2, temp, 190.0, gluc, 16.0] 
     inputs_df = pd.DataFrame([raw_vitals], columns=scaler.feature_names_in_)
     scaled = scaler.transform(inputs_df)
     pred = model.predict(scaled, verbose=0)
@@ -101,43 +137,44 @@ if st.button("🚀 EXECUTE MULTIMODAL DIAGNOSTIC", type="primary", use_container
     idx = np.argmax(pred)
     disease = label_encoder.inverse_transform([idx])[0]
     prob = pred[0][idx] * 100
+
+    # Triage Logic
+    status = "🔴 CRITICAL" if spo2 < 88 or bps > 190 else "🟢 STABLE"
+    color = "#ff4b4b" if status == "🔴 CRITICAL" else "#28a745"
+    action = "Immediate physician intervention required" if status == "🔴 CRITICAL" else "Routine monitoring"
     
-    # Unique Feature: Triage Badge
-    status, action, color = get_triage_status(disease, prob, spo2, bps)
+    reasons = explain_values(hr, (bps+bpd)/2, spo2, temp)
+    warnings, _ = check_drugs(curr_meds.split(","), curr_symptoms.split(","), curr_allergies.split(","))
+
     st.markdown(f"<div style='background:{color}; padding:20px; border-radius:10px; color:white; text-align:center;'><h1>{status}: {disease.upper()}</h1><p>{action}</p></div>", unsafe_allow_html=True)
 
-    tab1, tab2, tab3 = st.tabs(["📊 Analytics & Radar", "💊 Therapy Pathway", "📄 Clinical Report"])
+    tab1, tab2, tab3 = st.tabs(["📊 Analytics", "💊 Therapy", "📄 Report & Email"])
     
     with tab1:
-        g1, g2 = st.columns([1.5, 1])
+        g1, g2 = st.columns([1.2, 1])
         with g1:
-            st.markdown("### 🎯 Differential Diagnosis (AI Confidence)")
-            prob_df = pd.DataFrame({"Condition": label_encoder.classes_, "Prob": pred[0]*100}).sort_values("Prob")
-            fig_bar = px.bar(prob_df, x="Prob", y="Condition", orientation='h', color="Prob", color_continuous_scale="Reds", template="plotly_dark")
-            st.plotly_chart(fig_bar, use_container_width=True)
-            
+            st.plotly_chart(px.bar(pd.DataFrame({"Condition": label_encoder.classes_, "Prob": pred[0]*100}), x="Prob", y="Condition", orientation='h', template="plotly_dark"), use_container_width=True)
         with g2:
-            st.markdown("### 🕸️ Physiological Fingerprint")
-            # Unique Insight: Radar chart showing which vitals are most abnormal
-            radar_cats = ['HR', 'SpO2', 'BP Sys', 'Temp', 'Glucose']
             radar_vals = [min(hr/160, 1.0), (100-spo2)/20, min(bps/200, 1.0), min(abs(temp-37)/5, 1.0), min(gluc/400, 1.0)]
-            fig_radar = go.Figure(data=go.Scatterpolar(r=radar_vals, theta=radar_cats, fill='toself', line_color=color))
-            fig_radar.update_layout(polar=dict(radialaxis=dict(visible=False)), template="plotly_dark", showlegend=False)
+            fig_radar = go.Figure(data=go.Scatterpolar(r=radar_vals, theta=['HR', 'SpO2', 'BP Sys', 'Temp', 'Glucose'], fill='toself'))
+            fig_radar.update_layout(template="plotly_dark", polar=dict(radialaxis=dict(visible=False)))
             st.plotly_chart(fig_radar, use_container_width=True)
 
     with tab2:
-        st.subheader(f"Drug Recommendations for {disease}")
-        # Knowledge Base Search
+        st.subheader(f"Knowledge Base: {disease}")
         rel_meds = med_db[med_db['Reason'].str.contains(disease, case=False, na=False)].head(10)
-        if not rel_meds.empty:
-            for _, row in rel_meds.iterrows():
-                with st.expander(f"💊 {row['Drug_Name']}"):
-                    st.write(f"**Indication:** {row['Reason']}")
-                    st.write(f"**Clinical Description:** {row['Description']}")
-        else:
-            st.warning("No specific drugs found in local database.")
+        for _, row in rel_meds.iterrows():
+            with st.expander(f"💊 {row['Drug_Name']}"):
+                st.write(row['Description'])
 
     with tab3:
-        report_data = {"Name": name, "Age": age, "Disease": disease, "Prob": round(prob, 2), "Risk": status}
-        html = create_pdf_report(report_data, [], [])
-        st.download_button("📥 Download Physician Report", html, file_name=f"{name}_Report.html", mime="text/html", use_container_width=True)
+        report_data = {"Name": name, "Age": age, "Gender": gender, "Disease": disease, "Prob": round(prob, 2), "Risk": status, "Urgency": action}
+        html_report = create_clinical_report(report_data, reasons, warnings)
+        
+        st.download_button("📥 Download Physician Report (HTML)", html_report, file_name=f"{name}_Report.html", mime="text/html", use_container_width=True)
+        
+        if doc_email and st.button("📧 Email Physician Now", use_container_width=True):
+            if send_to_physician(doc_email, report_data, reasons):
+                st.success(f"Report transmitted to {doc_email}! ✅")
+            else:
+                st.error("Email failed. Check your Secrets.")
