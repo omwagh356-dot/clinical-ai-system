@@ -41,27 +41,38 @@ def send_to_doctor(receiver, report, reasons, warnings):
 
 @st.cache_data
 def load_clinical_data():
-    # Load Disease symptoms
+    # 1. Load Disease symptoms
     disease_df = pd.read_csv('DiseaseAndSymptoms.csv')
     disease_df['Disease'] = disease_df['Disease'].astype(str).str.strip().str.title()
     
+    # 2. Load Medicine data with Auto-Detection
+    file_path = 'Medicine_description.xlsx'
     try:
-        med_df = pd.read_csv('Medicine_description.xlsx', encoding='latin1', on_bad_lines='skip', engine='python')
+        # 'sep=None' automatically detects if the file uses , or ; or \t
+        med_df = pd.read_csv(file_path, sep=None, engine='python', encoding='latin1', on_bad_lines='skip')
         
-        # CLEANUP: Strip invisible spaces from headers
+        # Clean the column headers (removes invisible spaces or BOM characters)
         med_df.columns = [col.strip().replace('ï»¿', '') for col in med_df.columns]
         
-        # FIX: Instead of looking for 'Reason', we find the column by position (index 1)
-        # and rename it to 'Reason' internally so the rest of the code works.
-        med_df = med_df.rename(columns={med_df.columns[1]: 'Reason'})
-        
+        # SEARCH FOR THE COLUMN: We check for 'res' or 'Reason' or the 2nd position
+        if 'res' in med_df.columns:
+            med_df = med_df.rename(columns={'res': 'Reason'})
+        elif 'Reason' in med_df.columns:
+            pass # Already named correctly
+        elif len(med_df.columns) > 1:
+            # Fallback: Rename the second column found to 'Reason'
+            med_df = med_df.rename(columns={med_df.columns[1]: 'Reason'})
+        else:
+            st.error("The medicine file appears to have only one column. Check your CSV formatting.")
+
+        # Final cleanup to ensure strings work in search
         med_df['Reason'] = med_df['Reason'].fillna('Unknown').astype(str).str.strip().str.title()
+        
     except Exception as e:
-        st.error(f"Error loading meds: {e}")
+        st.error(f"Critical Error loading medicine file: {e}")
         med_df = pd.DataFrame(columns=['Drug_Name', 'Reason', 'Description'])
         
     return disease_df, med_df
-
 @st.cache_resource
 def load_ml_assets():
     model = load_model("model/model.h5")
