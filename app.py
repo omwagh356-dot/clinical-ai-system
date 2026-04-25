@@ -8,9 +8,9 @@ import joblib
 import smtplib
 from email.message import EmailMessage
 
-# --- 1. CORE FUNCTIONS (Must be at the top to avoid NameError) ---
+# --- 1. CORE FUNCTIONS (Must be at the top) ---
 
-def create_pdf_report(report, info, reasons, warnings):
+def create_pdf_report(report, reasons, warnings):
     """Generates a professional HTML report."""
     return f"""
     <div style='font-family:Arial; border:2px solid #333; padding:20px; border-radius:10px;'>
@@ -25,6 +25,7 @@ def create_pdf_report(report, info, reasons, warnings):
         <ul>{"".join([f"<li>{r}</li>" for r in reasons])}</ul>
         <h4>💊 Safety Alerts</h4>
         <ul>{"".join([f"<li>⚠️ {w}</li>" for w in warnings]) if warnings else "<li>No risks flagged</li>"}</ul>
+        <p><b>Action Plan:</b> {report['Urgency']}</p>
     </div>
     """
 
@@ -57,22 +58,22 @@ def load_clinical_data():
     disease_df = pd.read_csv('DiseaseAndSymptoms.csv')
     disease_df['Disease'] = disease_df['Disease'].astype(str).str.strip().str.title()
     try:
+        # Robust loading for the 22k medicine records
         med_db = pd.read_csv('Medicine_description.xlsx', encoding='latin1', on_bad_lines='skip', engine='python')
         med_db.columns = med_db.columns.str.strip()
     except:
         med_db = pd.DataFrame(columns=['Drug_Name', 'Reason', 'Description'])
     return disease_df, med_db
 
-# Load into global memory
+# Initialize Assets
 model, scaler, label_encoder = load_ml_assets()
 disease_db, med_db = load_clinical_data()
 
-# Logic imports
 try:
     from drug_module import check_drugs
     from explain import explain_values
 except ImportError:
-    st.error("⚠️ Ensure drug_module.py and explain.py are present.")
+    st.error("⚠️ Ensure drug_module.py and explain.py are in your directory.")
 
 def get_triage_status(disease, prob, spo2, bps):
     if spo2 < 88 or bps > 190 or (disease != "Normal" and prob > 92):
@@ -114,23 +115,24 @@ with col2:
 # --- 4. DIAGNOSTIC ENGINE ---
 st.divider()
 if st.button("🚀 EXECUTE MULTIMODAL DIAGNOSTIC", type="primary", width="stretch"):
-    # Prediction
+    # Prediction logic
     raw_vitals = [age, hr, bps, bpd, spo2, temp, 190.0, gluc, 16.0] 
     scaled = scaler.transform(pd.DataFrame([raw_vitals], columns=scaler.feature_names_in_))
     pred = model.predict(scaled, verbose=0)
+    
     idx = np.argmax(pred)
     disease = label_encoder.inverse_transform([idx])[0]
     prob = pred[0][idx] * 100
     prob_df = pd.DataFrame({"Condition": label_encoder.classes_, "Prob": pred[0]*100}).sort_values("Prob")
 
-    # Status & Analysis
+    # Analysis
     status, action, color = get_triage_status(disease, prob, spo2, bps)
     reasons = explain_values(hr, (bps+bpd)/2, spo2, temp)
     warnings, _ = check_drugs(curr_drugs.split(","), curr_diseases.split(","), curr_allergies.split(","))
     
     st.markdown(f"<div style='background-color:{color}; padding:20px; border-radius:10px; color:white; text-align:center;'><h1>{status}: {disease.upper()}</h1><p>{action}</p></div>", unsafe_allow_html=True)
 
-    tab1, tab2, tab3 = st.tabs(["📊 Analytics", "💊 Medicine Base", "📄 Report & Email"])
+    tab1, tab2, tab3 = st.tabs(["📊 Analytics", "💊 Medicine Knowledge", "📄 Report & Email"])
     
     with tab1:
         cv1, cv2 = st.columns([1.2, 1])
@@ -144,7 +146,8 @@ if st.button("🚀 EXECUTE MULTIMODAL DIAGNOSTIC", type="primary", width="stretc
 
     with tab2:
         st.subheader(f"📚 Knowledge Base: {disease}")
-        match = disease_db[disease_db['Disease'].str.contains(disease.strip().title(), case=False, na=False)]
+        search_term = disease.strip().title()
+        match = disease_db[disease_db['Disease'].str.contains(search_term, case=False, na=False)]
         if not match.empty:
             st.write("**Typical Symptoms:**", ", ".join(match.iloc[0, 1:].dropna().unique().tolist()))
         
@@ -156,11 +159,18 @@ if st.button("🚀 EXECUTE MULTIMODAL DIAGNOSTIC", type="primary", width="stretc
                     st.write(f"**Description:** {row['Description']}")
 
     with tab3:
-        report_data = {"Name": name, "Age": age, "Gender": gender, "Disease": disease, "Prob": round(prob, 2), "Risk": status, "Urgency": action, "vitals": raw_vitals}
-        # Fixed: passing empty dict if no specific info key is found to prevent KeyError
-        html_doc = create_pdf_report(report_data, {"next_steps": action}, reasons, warnings)
+        report_data = {
+            "Name": name if name else "Unknown",
+            "Age": age, "Gender": gender, "Disease": disease, 
+            "Prob": round(prob, 2), "Risk": status, "Urgency": action, "vitals": raw_vitals
+        }
         
-        st.download_button("📥 Download Report (HTML)", html_doc, file_name=f"{name}_Report.html", mime="text/html", width="stretch")
-        if doc_email and st.button("📧 Email Report", width="stretch"):
-            if send_to_doctor(doc_email, report_data, reasons, warnings):
-                st.success("Report Sent! ✅")
+        html_doc = create_pdf_report(report_data, reasons, warnings)
+        
+        c_dl, c_em = st.columns(2)
+        with c_dl:
+            st.download_button("📥 Download Report (HTML)", html_doc, file_name=f"{name}_Report.html", mime="text/html", width="stretch")
+        with c_em:
+            if doc_email and st.button("📧 Email Report", width="stretch"):
+                if send_to_doctor(doc_email, report_data, reasons, warnings):
+                    st.success("Sent Successfully! ✅")
