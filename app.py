@@ -20,7 +20,7 @@ def load_ml_assets():
 def load_clinical_data():
     # Loading your new datasets
     disease_df = pd.read_csv('DiseaseAndSymptoms.csv')
-    medicine_df = pd.read_csv('Medicine_description.xlsx - Sheet1.csv')
+    medicine_df = pd.read_csv('Medicine_description.xlsx')
     # Clean strings to ensure matching works
     medicine_df['Reason'] = medicine_df['Reason'].str.strip().str.title()
     disease_df['Disease'] = disease_df['Disease'].str.strip().str.title()
