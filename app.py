@@ -21,9 +21,9 @@ def load_ml_assets():
 def load_clinical_data():
     disease_df = pd.read_csv('DiseaseAndSymptoms.csv')
     try:
-        medicine_df = pd.read_csv('Medicine_description.xlsx - Sheet1.csv', encoding='utf-8')
+        medicine_df = pd.read_csv('Medicine_description.xlsx', encoding='utf-8')
     except:
-        medicine_df = pd.read_csv('Medicine_description.xlsx - Sheet1.csv', encoding='latin1')
+        medicine_df = pd.read_csv('Medicine_description.xlsx', encoding='latin1')
     
     # Standardize names for matching
     medicine_df['Reason'] = medicine_df['Reason'].str.strip().str.title()
