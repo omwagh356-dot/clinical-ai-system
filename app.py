@@ -59,35 +59,34 @@ def load_clinical_data():
     disease_df = pd.read_csv('DiseaseAndSymptoms.csv')
     disease_df['Disease'] = disease_df['Disease'].astype(str).str.strip().str.title()
     
-    # 2. Load Medicine data with advanced cleanup
+    # 2. Load Medicine data with structural detection
     file_path = 'Medicine_description.xlsx'
     try:
-        # Load using latin1 to prevent crash on Excel special characters
-        df = pd.read_csv(file_path, encoding='latin1', on_bad_lines='skip', engine='python')
+        # We use 'sep=None' and 'engine=python' to automatically detect if it's a , or ; 
+        df = pd.read_csv(file_path, sep=None, engine='python', encoding='latin1', on_bad_lines='skip')
         
-        # --- THE FIX: Standardize all column headers ---
-        # 1. Strip whitespace
-        # 2. Remove invisible characters (like BOM)
-        df.columns = df.columns.str.strip().str.replace('ï»¿', '')
+        # CLEANING STEP 1: Remove any "ï»¿" or Byte Order Marks and strip spaces
+        df.columns = [col.encode('ascii', 'ignore').decode('ascii').strip() for col in df.columns]
         
-        # 3. Handle case-sensitivity (find 'reason', 'Reason', 'REASON')
-        actual_cols = {col.lower(): col for col in df.columns}
-        if 'reason' in actual_cols:
-            df.rename(columns={actual_cols['reason']: 'Reason'}, inplace=True)
+        # CLEANING STEP 2: Find the 'Reason' column regardless of capitalization
+        col_map = {col.lower(): col for col in df.columns}
+        if 'reason' in col_map:
+            df.rename(columns={col_map['reason']: 'Reason'}, inplace=True)
         else:
-            # Emergency Fallback: If we can't find it, use the 2nd column (index 1) 
-            # as 'Reason' assuming Drug_Name is first.
+            # If 'Reason' is still missing, we use the second column as a fallback
+            st.warning(f"⚠️ 'Reason' header not found. Using '{df.columns[1]}' as the Reason column.")
             df.rename(columns={df.columns[1]: 'Reason'}, inplace=True)
-            st.warning(f"⚠️ Column 'Reason' not found exactly. Mapping '{df.columns[1]}' as Reason.")
 
-        # Final string cleaning
+        # Ensure values are strings to prevent .str errors
         df['Reason'] = df['Reason'].astype(str).str.strip().str.title()
         return disease_df, df
 
     except Exception as e:
-        st.error(f"Failed to load medicine file: {e}")
-        # Create empty structure so app doesn't crash
+        st.error(f"Critical Data Error: {e}")
         return disease_df, pd.DataFrame(columns=['Drug_Name', 'Reason', 'Description'])
+
+# Re-run the global assignment
+disease_db, med_db = load_clinical_data()
 
 # --- GLOBAL ASSIGNMENT ---
 disease_db, med_db = load_clinical_data()
@@ -173,12 +172,16 @@ if st.button("🚀 EXECUTE MULTIMODAL DIAGNOSTIC", type="primary", width="stretc
         if not match.empty:
             st.write("**Typical Symptoms:**", ", ".join(match.iloc[0, 1:].dropna().unique().tolist()))
         
-        st.divider()
-        rel_meds = med_db[med_db['Reason'].str.contains(disease, case=False, na=False)].head(10)
-        if not rel_meds.empty:
-            for _, row in rel_meds.iterrows():
-                with st.expander(f"💊 {row['Drug_Name']}"):
-                    st.write(f"**Description:** {row['Description']}")
+        if 'Reason' in med_db.columns:
+            rel_meds = med_db[med_db['Reason'].str.contains(disease, case=False, na=False)].head(10)
+            if not rel_meds.empty:
+                for _, row in rel_meds.iterrows():
+                    with st.expander(f"💊 {row.get('Drug_Name', 'Unknown Drug')}"):
+                        st.write(f"**Description:** {row.get('Description', 'No description available.')}")
+            else:
+                st.warning("No specific drugs found for this condition in the local database.")
+        else:
+            st.error("The medicine database is missing the 'Reason' column. Please check file headers.")
 
     with tab3:
         report_data = {
