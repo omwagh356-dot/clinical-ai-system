@@ -19,16 +19,32 @@ def load_ml_assets():
 
 @st.cache_data
 def load_clinical_data():
+    # 1. Load Disease symptoms
     disease_df = pd.read_csv('DiseaseAndSymptoms.csv')
-    try:
-        medicine_df = pd.read_csv('Medicine_description.xlsx', encoding='utf-8')
-    except:
-        medicine_df = pd.read_csv('Medicine_description.xlsx', encoding='latin1')
     
-    # Standardize names for matching
-    medicine_df['Reason'] = medicine_df['Reason'].str.strip().str.title()
-    disease_df['Disease'] = disease_df['Disease'].str.strip().str.title()
-    return disease_df, medicine_df
+    # 2. Load Medicine data with "Power Settings"
+    # on_bad_lines='skip' ensures one broken row doesn't crash the whole app
+    # engine='python' is slower but much better at handling complex text than the default C engine
+    file_path = 'Medicine_description.xlsx'
+    
+    try:
+        med_db = pd.read_csv(
+            file_path, 
+            encoding='latin1', 
+            on_bad_lines='skip', 
+            engine='python',
+            quoting=1 # This handles descriptions containing commas
+        )
+    except Exception as e:
+        st.error(f"Error loading medicine database: {e}")
+        # Fallback to an empty dataframe so the app doesn't crash
+        med_db = pd.DataFrame(columns=['Drug_Name', 'Reason', 'Description'])
+
+    # Clean strings
+    med_db['Reason'] = med_db['Reason'].astype(str).str.strip().str.title()
+    disease_df['Disease'] = disease_df['Disease'].astype(str).str.strip().str.title()
+    
+    return disease_df, med_db
 
 # --- 2. GLOBAL ASSIGNMENT (THE FIX) ---
 # These lines MUST be outside of any functions and unindented
