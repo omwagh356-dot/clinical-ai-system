@@ -17,34 +17,35 @@ def load_ml_assets():
     label_encoder = joblib.load("label_encoder.pkl")
     return model, scaler, label_encoder
 
-# --- 2. EXECUTE THE FUNCTION AT THE TOP LEVEL ---
-# This makes 'scaler', 'model', and 'label_encoder' available to the whole app
-model, scaler, label_encoder = load_ml_assets()
-
-# --- 3. NOW YOUR BUTTON LOGIC WILL WORK ---
-if st.button("🚀 EXECUTE MULTIMODAL DIAGNOSTIC"):
-    # This line will no longer fail because 'scaler' is defined above!
-    scaled = scaler.transform(inputs_df)
 @st.cache_data
-
 def load_clinical_data():
-    # 1. Load Disease symptoms (Usually UTF-8 is fine here)
     disease_df = pd.read_csv('DiseaseAndSymptoms.csv')
-    
-    # 2. Load Medicine data with Encoding Fix
-    # We use 'latin1' or 'cp1252' to handle Excel-style special characters
     try:
-        med_db = pd.read_csv('Medicine_description.xlsx', encoding='utf-8')
-    except UnicodeDecodeError:
-        # If UTF-8 fails, use latin1 which is more forgiving
-        med_db = pd.read_csv('Medicine_description.xlsx', encoding='latin1')
-
-    # Clean strings to ensure matching works
-    med_db['Reason'] = med_db['Reason'].str.strip().str.title()
-    disease_df['Disease'] = disease_df['Disease'].str.strip().str.title()
+        medicine_df = pd.read_csv('Medicine_description.xlsx - Sheet1.csv', encoding='utf-8')
+    except:
+        medicine_df = pd.read_csv('Medicine_description.xlsx - Sheet1.csv', encoding='latin1')
     
-    return disease_df, med_db
+    # Standardize names for matching
+    medicine_df['Reason'] = medicine_df['Reason'].str.strip().str.title()
+    disease_df['Disease'] = disease_df['Disease'].str.strip().str.title()
+    return disease_df, medicine_df
 
+# --- 2. GLOBAL ASSIGNMENT (THE FIX) ---
+# These lines MUST be outside of any functions and unindented
+model, scaler, label_encoder = load_ml_assets()
+disease_db, med_db = load_clinical_data()
+
+# --- 3. UI AND BUTTON LOGIC ---
+st.title("🏥 Clinical AI Dashboard")
+
+# Now, when you run this, disease_db will be recognized!
+if st.button("🚀 EXECUTE MULTIMODAL DIAGNOSTIC"):
+    # ... prediction logic ...
+    
+    with st.expander("Typical Symptoms"):
+        # This will now find disease_db because we defined it globally
+        typical = disease_db[disease_db['Disease'].str.contains(disease, case=False)]
+        st.write(typical)
 # --- 2. CORE LOGIC ---
 try:
     from drug_module import check_drugs
