@@ -1,75 +1,58 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+from tensorflow.keras.models import load_model
 import joblib
-import os
-import re
 import smtplib
 from email.message import EmailMessage
-from tensorflow.keras.models import load_model
 
-# --- 1. CONFIG & UI STYLING ---
-st.set_page_config(page_title="Clinical AI Portal", layout="wide", page_icon="🏥")
+# --- 1. EXTERNAL LOGIC ---
+try:
+    from drug_module import check_drugs
+    from explain import explain_values
+except ImportError:
+    st.error("⚠️ Ensure drug_module.py and explain.py are in your GitHub repository.")
 
-st.markdown("""
-    <style>
-    .report-container { border: 2px solid #1a73e8; padding: 20px; border-radius: 10px; margin-top: 20px; color: inherit; }
-    .drug-card { background-color: rgba(26, 115, 232, 0.1); border-left: 5px solid #1a73e8; padding: 12px; margin-bottom: 10px; border-radius: 5px; }
-    .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #1a73e8; color: white; font-weight: bold; }
-    </style>
-    """, unsafe_allow_html=True)
+# --- 2. KNOWLEDGE BASES ---
+CLINICAL_DATABASE = {
+    "Infection": {"icon": "🤒", "drugs": ["Acetaminophen", "Ceftriaxone"], "next_steps": "Blood Cultures, CBC.", "pathway": "Sepsis Protocol"},
+    "Respiratory Failure": {"icon": "🫁", "drugs": ["Oxygen", "Albuterol"], "next_steps": "ABG, Chest X-Ray.", "pathway": "Acute Respiratory Protocol"},
+    "Hypertension": {"icon": "🩸", "drugs": ["Lisinopril", "Amlodipine"], "next_steps": "ECG, Urinalysis.", "pathway": "Hypertensive Management"},
+    "Normal": {"icon": "✅", "drugs": ["None"], "next_steps": "Routine Checkup.", "pathway": "Standard Wellness"},
+    "Cardiac Emergency": {"icon": "💔", "drugs": ["Aspirin", "Nitroglycerin"], "next_steps": "ECG, Troponin.", "pathway": "ACLS Protocol"}
+}
 
-# --- 2. ASSET LOADING ---
+SYMPTOM_DRUGS = {
+    "chest pain": {"rec": "Aspirin (324mg).", "safety": "🚨 EMERGENCY: Possible Heart Attack."},
+    "fever": {"rec": "Acetaminophen.", "safety": "✅ Monitor for confusion."},
+    "shortness of breath": {"rec": "Oxygen.", "safety": "🚨 EMERGENCY: Respiratory Failure risk."}
+}
+
+# --- 3. CORE FUNCTIONS ---
 @st.cache_resource
-def load_all_assets():
-    try:
-        v_model = load_model("model/model.h5")
-        v_scaler = joblib.load("scaler.pkl")
-        v_le = joblib.load("label_encoder.pkl")
-        s_model = joblib.load("symptom_model.pkl")
-        s_le = joblib.load("symptom_encoder.pkl")
-        s_features = joblib.load("symptom_features.pkl")
-        return v_model, v_scaler, v_le, s_model, s_le, s_features
-    except Exception as e:
-        st.error(f"Error loading models: {e}")
-        return None, None, None, None, None, None
+def load_assets():
+    model = load_model("model/model.h5")
+    scaler = joblib.load("scaler.pkl")
+    label_encoder = joblib.load("label_encoder.pkl")
+    return model, scaler, label_encoder
 
-@st.cache_data
-def load_medicine_db():
-    try:
-        df = pd.read_excel('Medicine_description.xlsx')
-        df.columns = [str(c).strip() for c in df.columns]
-        return df
-    except:
-        return pd.DataFrame()
+model, scaler, label_encoder = load_assets()
 
-assets = load_all_assets()
-medicine_db = load_medicine_db()
+def create_pdf_report(report_data, info, reasons, safety_warnings):
+    return f"""<div style='font-family:Arial; border:2px solid #333; padding:20px;'>
+    <h1>Clinical AI Report: {report_data['Name']}</h1>
+    <p><b>Diagnosis:</b> {report_data['Disease']} ({report_data['Prob']}%)</p>
+    <p><b>Vitals Analysis:</b> {", ".join(reasons)}</p>
+    </div>"""
 
-# --- 3. LOGIC FUNCTIONS ---
-def predict_symptoms(user_input, s_model, s_le, s_features):
-    tokens = [t.strip().lower().replace("_", " ") for t in user_input.split(",")]
-    input_vector = np.zeros(len(s_features))
-    for i, feature in enumerate(s_features):
-        if feature.lower().replace("_", " ") in tokens:
-            input_vector[i] = 1
-    if np.sum(input_vector) == 0:
-        return "No Symptoms Detected", 0.0
-    pred_prob = s_model.predict_proba([input_vector])
-    idx = np.argmax(pred_prob)
-    confidence = np.max(pred_prob) * 100
-    disease = s_le.inverse_transform([idx])[0]
-    if confidence < 45:
-        return "Inconclusive: Please provide more specific symptoms", confidence
-    return disease, confidence
-
-def send_alert(receiver_email, report_data, meds):
+def send_to_doctor(receiver, report, reasons, warnings):
     msg = EmailMessage()
-    msg['Subject'] = f"🚨 {report_data['urgency']} Alert: {report_data['name']}"
-    msg['From'] = st.secrets.get("EMAIL_USER", "clinical-ai@system.com")
-    msg['To'] = receiver_email
-    med_text = "\n".join([f"- {m['name']} (for {m['for']})" for m in meds])
-    body = f"Patient: {report_data['name']}\nVitals Diag: {report_data['v_diag']} ({report_data['v_prob']})\nSymptom Diag: {report_data['s_diag']} ({report_data['s_prob']})\nStatus: {report_data['urgency']}\n\nTherapy:\n{med_text}"
+    msg['Subject'] = f"🚨 {report['Risk']} Risk: {report['Name']}"
+    msg['From'] = st.secrets["EMAIL_USER"]
+    msg['To'] = receiver
+    body = f"Patient: {report['Name']}\nAge: {report['Age']}\nGender: {report['Gender']}\nResult: {report['Disease']}\nAnalysis: {reasons}"
     msg.set_content(body)
     try:
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
@@ -78,97 +61,102 @@ def send_alert(receiver_email, report_data, meds):
         return True
     except: return False
 
-# --- 4. HEADER ---
-st.title("🏥 Clinical AI: Intelligent Risk & Therapy Engine")
-st.markdown("### **M.Sc. Data Science Final Project**")
-st.markdown("**Developer:** Onkar Suresh Wagh")
+# --- 4. UI LAYOUT ---
+st.set_page_config(page_title="Advanced Clinical AI", layout="wide")
+st.title("🛡️ Next-Gen Clinical Decision Support System")
+
+c1, c2 = st.columns([1, 1])
+with c1:
+    st.subheader("👤 Patient Identity")
+    name = st.text_input("Full Name")
+    doc_email = st.text_input("Doctor's Email")
+    g_col, a_col = st.columns(2)
+    gender = g_col.selectbox("Gender", ["Male", "Female", "Other"])
+    age = a_col.number_input("Age", 1, 120, 30)
+
+    st.subheader("📉 Real-time Vitals")
+    v1, v2, v3 = st.columns(3)
+    hr = v1.number_input("Heart Rate", 40.0, 200.0, 72.0)
+    bps = v1.number_input("BP Systolic", 70.0, 240.0, 120.0)
+    resp = v1.number_input("Resp. Rate", 0.0, 50.0, 16.0)
+    spo2 = v2.number_input("SpO2 %", 50.0, 100.0, 98.0)
+    bpd = v2.number_input("BP Diastolic", 40.0, 140.0, 80.0)
+    chol = v2.number_input("Cholesterol", 100.0, 400.0, 190.0)
+    temp = v3.number_input("Temp °C", 34.0, 42.0, 37.0)
+    gluc = v3.number_input("Glucose", 40.0, 600.0, 95.0)
+
+with c2:
+    st.subheader("🧪 Contextual History")
+    curr_drugs = st.text_area("Current Medications")
+    curr_diseases = st.text_area("Reported Symptoms / Known Conditions")
+    curr_allergies = st.text_area("Allergies")
+    
+    if st.button("PRE-CHECK DRUG SAFETY", use_container_width=True):
+        warnings, _ = check_drugs(curr_drugs.split(","), curr_diseases.split(","), curr_allergies.split(","))
+        for w in warnings: st.error(w)
+
+# --- 5. INNOVATIVE ANALYSIS ---
 st.divider()
-# --- 5. UI INPUTS ---
-col_l, col_r = st.columns([1, 1], gap="large")
-with col_l:
-    st.subheader("👤 Patient Identity & Vitals")
-    p_name = st.text_input("Full Name")
-    p_age = st.number_input("Age", 1, 120, 23)
-    v1, v2 = st.columns(2)
-    hr = v1.number_input("Heart Rate (BPM)", 30.0, 250.0, 72.0)
-    spo2 = v2.number_input("SpO2 (%)", 50.0, 100.0, 98.0)
-    bps = v1.number_input("BP Systolic (mmHg)", 50.0, 250.0, 120.0)
-    temp = v2.number_input("Temperature (°C)", 30.0, 45.0, 37.0)
+if st.button("🚀 EXECUTE MULTIMODAL DIAGNOSTIC", type="primary", use_container_width=True):
+    # ML Prediction
+    raw_vitals = [age, hr, bps, bpd, spo2, temp, chol, gluc, resp]
+    inputs_df = pd.DataFrame([raw_vitals], columns=scaler.feature_names_in_)
+    scaled = scaler.transform(inputs_df)
+    pred = model.predict(scaled, verbose=0)
+    idx = np.argmax(pred)
+    disease = label_encoder.inverse_transform([idx])[0]
+    prob = pred[0][idx] * 100
 
-with col_r:
-    st.subheader("📋 Clinical Presentation")
-    if assets[5] is not None:
-        selected = st.multiselect("Quick Select Symptoms:", options=assets[5])
-        default_text = ", ".join(selected)
-    else: default_text = ""
-    s_input = st.text_area("Clinical Description", value=default_text, height=150)
-    doc_email = st.text_input("Doctor Email for Alerts")
+    # Triage Overrides
+    risk, urgency = ("High", "IMMEDIATE ER") if (spo2 < 90 or temp > 39.5 or bps >= 180) else ("Low", "Routine")
+    
+    info = CLINICAL_DATABASE.get(disease, CLINICAL_DATABASE["Normal"])
+    reasons = explain_values(hr, (bps+bpd)/2, spo2, temp)
+    warnings, _ = check_drugs(curr_drugs.split(","), curr_diseases.split(","), curr_allergies.split(","))
 
-# --- 6. EXECUTION (The Fix is here!) ---
-st.divider()
-if st.button("RUN FULL DIAGNOSTIC", type="primary"):
-    if all(assets) and not medicine_db.empty:
-        v_model, v_scaler, v_le, s_model, s_le, s_features = assets
+    st.header(f"{info['icon']} Primary Diagnosis: {disease}")
+    
+    tab1, tab2, tab3 = st.tabs(["📊 Analytics & Explainability", "💊 Therapy & Pharmacy", "📄 Export & Email"])
+
+    with tab1:
+        col_graph1, col_graph2 = st.columns(2)
         
-        # A. Run AI Predictions
-        v_feat_names = ['age', 'heart_rate', 'bp_systolic', 'bp_diastolic', 'spo2', 'temp', 'cholesterol', 'glucose', 'respiratory_rate']
-        raw_v = [p_age, hr, bps, 80.0, spo2, temp, 190.0, 95.0, 16.0]
-        v_scaled = v_scaler.transform(pd.DataFrame([raw_v], columns=v_feat_names))
-        v_preds = v_model.predict(v_scaled, verbose=0)
-        v_diag = v_le.inverse_transform([np.argmax(v_preds)])[0]
-        v_prob = np.max(v_preds) * 100
+        with col_graph1:
+            st.write("**Differential Diagnosis (AI Confidence)**")
+            prob_df = pd.DataFrame({"Condition": label_encoder.classes_, "Probability": pred[0] * 100}).sort_values("Probability")
+            fig = px.bar(prob_df, x="Probability", y="Condition", orientation='h', color="Probability", color_continuous_scale="Viridis")
+            st.plotly_chart(fig, use_container_width=True)
+
+        with col_graph2:
+            st.write("**Physiological Radar (Patient Stress Fingerprint)**")
+            radar_cats = ['HR', 'SpO2', 'BP Sys', 'Temp', 'Glucose']
+            radar_vals = [hr/150, spo2/100, bps/200, (temp-30)/10, gluc/300]
+            fig_radar = go.Figure(data=go.Scatterpolar(r=radar_vals, theta=radar_cats, fill='toself', name='Patient State'))
+            fig_radar.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 1])), showlegend=False)
+            st.plotly_chart(fig_radar, use_container_width=True)
+
+    with tab2:
+        st.subheader("Clinical Pathway & Meds")
+        st.info(f"**Recommended Pathway:** {info['pathway']}")
         
-        s_diag, s_prob = predict_symptoms(s_input, s_model, s_le, s_features)
-        urgency = "EMERGENCY" if spo2 < 90 or bps > 180 or temp >= 39.5 else "Stable"
-
-        # B. Display Report
-        st.markdown(f"""<div class="report-container">
-            <h3 style='text-align: center;'>Clinical Diagnostic Report</h3><hr>
-            <p><b>Vitals AI Prediction:</b> {v_diag} ({v_prob:.2f}%)</p>
-            <p><b>Symptom AI Prediction:</b> {s_diag} ({s_prob:.2f}%)</p>
-            <p><b>Status:</b> <span style="color:{'red' if urgency=='EMERGENCY' else 'green'}">{urgency}</span></p>
-            </div>""", unsafe_allow_html=True)
-
-        # C. Therapy Recommendations (CRITICAL: STAY INSIDE THE IF BLOCK)
-        # --- F. Therapy Recommendations ---
-        st.subheader("💊 Therapy Recommendations")
+        # Smart Symptom Mapping
+        user_in = curr_diseases.lower()
+        found_sym = False
+        for sym, adv in SYMPTOM_DRUGS.items():
+            if sym in user_in:
+                st.success(f"**{sym.capitalize()} Management:** {adv['rec']}")
+                st.warning(f"**Safety:** {adv['safety']}")
+                found_sym = True
         
-        # 1. Clean the list of predicted diseases
-        valid_diagnoses = [d.strip().lower() for d in [v_diag, s_diag] 
-                          if d not in ["Normal", "General Assessment", "Inconclusive: Please provide more specific symptoms", "No Symptoms Detected"]]
+        st.write("**Predicted Standard Protocol:**")
+        cols = st.columns(len(info['drugs']))
+        for i, d in enumerate(info['drugs']): cols[i].button(d, disabled=True, key=f"d_{i}")
 
-        med_list = []
-        if not valid_diagnoses:
-            st.info("💡 General Advice: Rest and stay hydrated.")
-        else:
-            med_found = False
-            cols = medicine_db.columns.tolist()
-            
-            for cond in valid_diagnoses:
-                # 2. ROBUST SEARCH: Clean the 'Reason' column while searching
-                # This matches "Jaundice" to "jaundice ", "JAUNDICE", or "Jaundice Treatment"
-                mask = medicine_db[cols[1]].astype(str).str.lower().str.contains(cond, na=False)
-                results = medicine_db[mask].head(3)
-                
-                if not results.empty:
-                    med_found = True
-                    for _, row in results.iterrows():
-                        m = {'name': row[cols[0]], 'for': cond.title(), 'desc': row[cols[2]] if len(cols) > 2 else "N/A"}
-                        med_list.append(m)
-                        st.markdown(f'<div class="drug-card"><b>{m["name"]}</b> (Target: {m["for"]})<br><small>{m["desc"]}</small></div>', unsafe_allow_html=True)
-            
-            if not med_found:
-                st.warning(f"No medications found in database matching: {', '.join(valid_diagnoses).title()}")
-        # D. Export & Email (CRITICAL: STAY INSIDE THE IF BLOCK)
-        st.divider()
-        c1, c2 = st.columns(2)
-        report_txt = f"Patient: {p_name}\nVitals: {v_diag}\nSymptoms: {s_diag}\nStatus: {urgency}"
-        with c1: st.download_button("📄 Download Report", report_txt, file_name=f"Report_{p_name}.txt")
-        with c2:
-            if doc_email:
-                with st.spinner("Sending Email Alert..."):
-                    rep_data = {'name':p_name, 'v_diag':v_diag, 'v_prob':f"{v_prob:.2f}%", 's_diag':s_diag, 's_prob':f"{s_prob:.2f}%", 'urgency':urgency}
-                    if send_alert(doc_email, rep_data, med_list): st.success("Alert sent!")
-                    else: st.error("Email failed. Check secrets.")
-    else:
-        st.error("Missing files (scaler.pkl, model.h5, or Excel). Please check your GitHub repository.")
+    with tab3:
+        report_data = {"Name": name, "Age": age, "Gender": gender, "Disease": disease, "Prob": round(prob, 2), "Risk": risk, "Urgency": urgency, "Symptoms": curr_diseases, "vitals": raw_vitals}
+        html_doc = create_pdf_report(report_data, info, reasons, warnings)
+        st.download_button("Download Full Clinical Report", html_doc, file_name=f"{name}_Report.html", mime="text/html")
+        
+        if doc_email:
+            if send_to_doctor(doc_email, report_data, reasons, warnings):
+                st.toast(f"Report for {name} emailed!", icon="📧")
