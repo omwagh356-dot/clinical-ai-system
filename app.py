@@ -59,23 +59,27 @@ def load_clinical_data():
     disease_df = pd.read_csv('DiseaseAndSymptoms.csv')
     disease_df['Disease'] = disease_df['Disease'].astype(str).str.strip().str.title()
     
-    # 2. Load Medicine data with extra safety
+    # 2. Load Medicine data with robust cleaning
     file_path = 'Medicine_description.xlsx'
     try:
-        # Load with latin1 to handle Excel special characters
+        # We use latin1 to handle Excel special characters that break UTF-8
         med_db = pd.read_csv(file_path, encoding='latin1', on_bad_lines='skip', engine='python')
         
-        # --- THE FIX: Strip invisible spaces from column names ---
+        # --- THE FIX: Clean all column headers ---
+        # This removes hidden spaces, tabs, and BOM characters
         med_db.columns = med_db.columns.str.strip()
         
-        # Search for 'Reason' even if it's lowercase 'reason'
+        # Search for 'Reason' even if it is lowercase or misspelled
         actual_cols = {col.lower(): col for col in med_db.columns}
         if 'reason' in actual_cols:
+            # Force rename it to exactly 'Reason' so your code works
             med_db.rename(columns={actual_cols['reason']: 'Reason'}, inplace=True)
         else:
-            st.error(f"Critical: 'Reason' column not found. Available: {list(med_db.columns)}")
+            # If still not found, show a warning so you can see the real names
+            st.error(f"Column 'Reason' not found. Available columns: {list(med_db.columns)}")
             return disease_df, pd.DataFrame(columns=['Drug_Name', 'Reason', 'Description'])
 
+        # Final string normalization
         med_db['Reason'] = med_db['Reason'].astype(str).str.strip().str.title()
         
     except Exception as e:
