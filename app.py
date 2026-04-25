@@ -8,29 +8,32 @@ import joblib
 import smtplib
 from email.message import EmailMessage
 
-# --- 1. EXTERNAL LOGIC ---
+# --- 1. CORE LOGIC IMPORTS ---
 try:
     from drug_module import check_drugs
     from explain import explain_values
 except ImportError:
-    st.error("⚠️ Ensure drug_module.py and explain.py are in your GitHub repository.")
+    st.error("⚠️ Critical modules missing! Ensure drug_module.py and explain.py are in the folder.")
 
-# --- 2. KNOWLEDGE BASES ---
+# --- 2. CLINICAL KNOWLEDGE BASES ---
 CLINICAL_DATABASE = {
-    "Infection": {"icon": "🤒", "drugs": ["Acetaminophen", "Ceftriaxone"], "next_steps": "Blood Cultures, CBC.", "pathway": "Sepsis Protocol"},
-    "Respiratory Failure": {"icon": "🫁", "drugs": ["Oxygen", "Albuterol"], "next_steps": "ABG, Chest X-Ray.", "pathway": "Acute Respiratory Protocol"},
-    "Hypertension": {"icon": "🩸", "drugs": ["Lisinopril", "Amlodipine"], "next_steps": "ECG, Urinalysis.", "pathway": "Hypertensive Management"},
-    "Normal": {"icon": "✅", "drugs": ["None"], "next_steps": "Routine Checkup.", "pathway": "Standard Wellness"},
-    "Cardiac Emergency": {"icon": "💔", "drugs": ["Aspirin", "Nitroglycerin"], "next_steps": "ECG, Troponin.", "pathway": "ACLS Protocol"}
+    "Infection": {"icon": "🤒", "drugs": ["Acetaminophen", "Ceftriaxone", "IV Saline"], "next_steps": "Blood Cultures, CBC, Lactic Acid check.", "safety": "Monitor for Septic Shock."},
+    "Respiratory Failure": {"icon": "🫁", "drugs": ["Oxygen", "Albuterol", "Steroids"], "next_steps": "ABG, Chest X-Ray, Intubation Eval.", "safety": "Keep head of bed elevated."},
+    "Hypertension": {"icon": "🩸", "drugs": ["Lisinopril", "Amlodipine"], "next_steps": "ECG, Urinalysis, BP monitoring.", "safety": "Risk of Stroke. Avoid sudden movement."},
+    "Normal": {"icon": "✅", "drugs": ["Maintain regimen"], "next_steps": "Routine 6-month follow-up.", "safety": "Cleared for activity."},
+    "Cardiac Emergency": {"icon": "💔", "drugs": ["Aspirin", "Nitroglycerin"], "next_steps": "12-Lead ECG, Troponin.", "safety": "Minimize movement. Prepare for ACLS."}
 }
 
 SYMPTOM_DRUGS = {
-    "chest pain": {"rec": "Aspirin (324mg).", "safety": "🚨 EMERGENCY: Possible Heart Attack."},
-    "fever": {"rec": "Acetaminophen.", "safety": "✅ Monitor for confusion."},
-    "shortness of breath": {"rec": "Oxygen.", "safety": "🚨 EMERGENCY: Respiratory Failure risk."}
+    "chest pain": {"rec": "Aspirin (324mg), Nitroglycerin.", "safety": "🚨 CRITICAL: Possible Heart Attack. ER immediately."},
+    "fever": {"rec": "Acetaminophen (650mg).", "safety": "✅ Monitor for confusion or stiff neck."},
+    "cough": {"rec": "Guaifenesin or Dextromethorphan.", "safety": "⚠️ Avoid suppressants if mucus is thick/green."},
+    "diarrhea": {"rec": "Loperamide, ORS.", "safety": "⚠️ Do not use if stool is bloody or fever is high."},
+    "headache": {"rec": "Ibuprofen.", "safety": "✅ Seek care if it's the 'worst headache of your life'."},
+    "shortness of breath": {"rec": "Oxygen/Albuterol.", "safety": "🚨 EMERGENCY: Monitor SpO2 immediately."}
 }
 
-# --- 3. CORE FUNCTIONS ---
+# --- 3. HELPER FUNCTIONS ---
 @st.cache_resource
 def load_assets():
     model = load_model("model/model.h5")
@@ -38,21 +41,20 @@ def load_assets():
     label_encoder = joblib.load("label_encoder.pkl")
     return model, scaler, label_encoder
 
-model, scaler, label_encoder = load_assets()
-
-def create_pdf_report(report_data, info, reasons, safety_warnings):
-    return f"""<div style='font-family:Arial; border:2px solid #333; padding:20px;'>
-    <h1>Clinical AI Report: {report_data['Name']}</h1>
-    <p><b>Diagnosis:</b> {report_data['Disease']} ({report_data['Prob']}%)</p>
-    <p><b>Vitals Analysis:</b> {", ".join(reasons)}</p>
-    </div>"""
+def get_triage_status(disease, prob, spo2, bps):
+    if spo2 < 88 or bps > 190 or (disease != "Normal" and prob > 90):
+        return "🔴 CRITICAL", "Immediate Physician Intervention Required", "#ff4b4b"
+    elif disease != "Normal" or prob > 70:
+        return "🟡 URGENT", "Priority Nursing Assessment", "#ffa500"
+    else:
+        return "🟢 STABLE", "Routine Monitoring", "#28a745"
 
 def send_to_doctor(receiver, report, reasons, warnings):
     msg = EmailMessage()
-    msg['Subject'] = f"🚨 {report['Risk']} Risk: {report['Name']}"
+    msg['Subject'] = f"🚨 {report['Risk']} Risk Report: {report['Name']}"
     msg['From'] = st.secrets["EMAIL_USER"]
     msg['To'] = receiver
-    body = f"Patient: {report['Name']}\nAge: {report['Age']}\nGender: {report['Gender']}\nResult: {report['Disease']}\nAnalysis: {reasons}"
+    body = f"Patient: {report['Name']}\nAge: {report['Age']}\nResult: {report['Disease']} ({report['Prob']}%)\nAnalysis: {reasons}\nWarnings: {warnings}"
     msg.set_content(body)
     try:
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
@@ -61,41 +63,55 @@ def send_to_doctor(receiver, report, reasons, warnings):
         return True
     except: return False
 
-# --- 4. UI LAYOUT ---
-st.set_page_config(page_title="Advanced Clinical AI", layout="wide")
-st.title("🛡️ Next-Gen Clinical Decision Support System")
+def create_pdf_report(report, info, reasons, warnings):
+    return f"""<div style='font-family:Arial; border:2px solid #333; padding:20px;'>
+    <h1 style='color:#1a73e8;'>Clinical AI Diagnostic Report</h1>
+    <p><b>Patient:</b> {report['Name']} | <b>Age:</b> {report['Age']} | <b>Gender:</b> {report['Gender']}</p>
+    <hr>
+    <h3>Diagnosis: {report['Disease']} ({report['Prob']}%)</h3>
+    <p><b>Vitals Analysis:</b> {", ".join(reasons)}</p>
+    <p><b>Safety Alerts:</b> {", ".join(warnings) if warnings else "None"}</p>
+    <p><b>Protocol:</b> {info['next_steps']}</p>
+    </div>"""
 
-c1, c2 = st.columns([1, 1])
-with c1:
+# --- 4. UI INTERFACE ---
+st.set_page_config(page_title="Pro-Clinical AI", layout="wide")
+model, scaler, label_encoder = load_assets()
+
+st.title("🛡️ Advanced Clinical Decision Support System")
+
+col_id, col_hist = st.columns(2)
+with col_id:
     st.subheader("👤 Patient Identity")
     name = st.text_input("Full Name")
     doc_email = st.text_input("Doctor's Email")
     g_col, a_col = st.columns(2)
     gender = g_col.selectbox("Gender", ["Male", "Female", "Other"])
     age = a_col.number_input("Age", 1, 120, 30)
+    
+    st.subheader("📉 Clinical Vitals")
+    v_c1, v_c2, v_c3 = st.columns(3)
+    hr = v_c1.number_input("Heart Rate", value=72.0)
+    bps = v_c1.number_input("BP Systolic", value=120.0)
+    resp = v_c1.number_input("Resp. Rate", value=16.0)
+    spo2 = v_c2.number_input("SpO2 %", value=98.0)
+    bpd = v_c2.number_input("BP Diastolic", value=80.0)
+    chol = v_c2.number_input("Cholesterol", value=190.0)
+    temp = v_c3.number_input("Temp °C", value=37.0)
+    gluc = v_c3.number_input("Glucose", value=95.0)
 
-    st.subheader("📉 Real-time Vitals")
-    v1, v2, v3 = st.columns(3)
-    hr = v1.number_input("Heart Rate", 40.0, 200.0, 72.0)
-    bps = v1.number_input("BP Systolic", 70.0, 240.0, 120.0)
-    resp = v1.number_input("Resp. Rate", 0.0, 50.0, 16.0)
-    spo2 = v2.number_input("SpO2 %", 50.0, 100.0, 98.0)
-    bpd = v2.number_input("BP Diastolic", 40.0, 140.0, 80.0)
-    chol = v2.number_input("Cholesterol", 100.0, 400.0, 190.0)
-    temp = v3.number_input("Temp °C", 34.0, 42.0, 37.0)
-    gluc = v3.number_input("Glucose", 40.0, 600.0, 95.0)
-
-with c2:
-    st.subheader("🧪 Contextual History")
-    curr_drugs = st.text_area("Current Medications")
-    curr_diseases = st.text_area("Reported Symptoms / Known Conditions")
+with col_hist:
+    st.subheader("💊 Safety & History")
+    curr_drugs = st.text_area("Current Medications (comma separated)")
+    curr_diseases = st.text_area("Known Conditions / Symptoms")
     curr_allergies = st.text_area("Allergies")
     
     if st.button("PRE-CHECK DRUG SAFETY", use_container_width=True):
-        warnings, _ = check_drugs(curr_drugs.split(","), curr_diseases.split(","), curr_allergies.split(","))
+        warnings, recs = check_drugs(curr_drugs.split(","), curr_diseases.split(","), curr_allergies.split(","))
         for w in warnings: st.error(w)
+        for r in recs: st.success(r)
 
-# --- 5. INNOVATIVE ANALYSIS ---
+# --- 5. EXECUTION ---
 st.divider()
 if st.button("🚀 EXECUTE MULTIMODAL DIAGNOSTIC", type="primary", use_container_width=True):
     # ML Prediction
@@ -107,56 +123,44 @@ if st.button("🚀 EXECUTE MULTIMODAL DIAGNOSTIC", type="primary", use_container
     disease = label_encoder.inverse_transform([idx])[0]
     prob = pred[0][idx] * 100
 
-    # Triage Overrides
-    risk, urgency = ("High", "IMMEDIATE ER") if (spo2 < 90 or temp > 39.5 or bps >= 180) else ("Low", "Routine")
-    
+    # Triage Power Feature
+    status, action, color = get_triage_status(disease, prob, spo2, bps)
+    st.markdown(f"<div style='background-color:{color}; padding:20px; border-radius:10px; color:white; text-align:center;'><h1>{status}</h1><p>{action}</p></div>", unsafe_allow_html=True)
+
     info = CLINICAL_DATABASE.get(disease, CLINICAL_DATABASE["Normal"])
     reasons = explain_values(hr, (bps+bpd)/2, spo2, temp)
     warnings, _ = check_drugs(curr_drugs.split(","), curr_diseases.split(","), curr_allergies.split(","))
 
-    st.header(f"{info['icon']} Primary Diagnosis: {disease}")
+    # TABS FOR UNIQUE ANALYTICS
+    tab1, tab2, tab3 = st.tabs(["📊 Analytics & Explainability", "💊 Therapy", "📄 Export & Email"])
     
-    tab1, tab2, tab3 = st.tabs(["📊 Analytics & Explainability", "💊 Therapy & Pharmacy", "📄 Export & Email"])
-
     with tab1:
-        col_graph1, col_graph2 = st.columns(2)
-        
-        with col_graph1:
-            st.write("**Differential Diagnosis (AI Confidence)**")
-            prob_df = pd.DataFrame({"Condition": label_encoder.classes_, "Probability": pred[0] * 100}).sort_values("Probability")
-            fig = px.bar(prob_df, x="Probability", y="Condition", orientation='h', color="Probability", color_continuous_scale="Viridis")
-            st.plotly_chart(fig, use_container_width=True)
-
-        with col_graph2:
-            st.write("**Physiological Radar (Patient Stress Fingerprint)**")
+        c_v1, c_v2 = st.columns(2)
+        with c_v1:
+            st.write("**Differential Diagnosis (AI Probability)**")
+            prob_df = pd.DataFrame({"Condition": label_encoder.classes_, "Prob": pred[0]*100}).sort_values("Prob")
+            st.plotly_chart(px.bar(prob_df, x="Prob", y="Condition", orientation='h', color="Prob"), use_container_width=True)
+        with c_v2:
+            st.write("**Physiological Radar Fingerprint**")
             radar_cats = ['HR', 'SpO2', 'BP Sys', 'Temp', 'Glucose']
             radar_vals = [hr/150, spo2/100, bps/200, (temp-30)/10, gluc/300]
-            fig_radar = go.Figure(data=go.Scatterpolar(r=radar_vals, theta=radar_cats, fill='toself', name='Patient State'))
+            fig_radar = go.Figure(data=go.Scatterpolar(r=radar_vals, theta=radar_cats, fill='toself'))
             fig_radar.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 1])), showlegend=False)
             st.plotly_chart(fig_radar, use_container_width=True)
 
     with tab2:
-        st.subheader("Clinical Pathway & Meds")
-        st.info(f"**Recommended Pathway:** {info['pathway']}")
-        
-        # Smart Symptom Mapping
         user_in = curr_diseases.lower()
         found_sym = False
         for sym, adv in SYMPTOM_DRUGS.items():
             if sym in user_in:
-                st.success(f"**{sym.capitalize()} Management:** {adv['rec']}")
-                st.warning(f"**Safety:** {adv['safety']}")
+                st.info(f"**For {sym.capitalize()}:** {adv['rec']}\n\n*Safety Check:* {adv['safety']}")
                 found_sym = True
-        
-        st.write("**Predicted Standard Protocol:**")
-        cols = st.columns(len(info['drugs']))
-        for i, d in enumerate(info['drugs']): cols[i].button(d, disabled=True, key=f"d_{i}")
+        st.subheader(f"Standard Protocol: {disease}")
+        for d in info['drugs']: st.success(f"✔️ {d}")
 
     with tab3:
-        report_data = {"Name": name, "Age": age, "Gender": gender, "Disease": disease, "Prob": round(prob, 2), "Risk": risk, "Urgency": urgency, "Symptoms": curr_diseases, "vitals": raw_vitals}
-        html_doc = create_pdf_report(report_data, info, reasons, warnings)
-        st.download_button("Download Full Clinical Report", html_doc, file_name=f"{name}_Report.html", mime="text/html")
-        
-        if doc_email:
-            if send_to_doctor(doc_email, report_data, reasons, warnings):
-                st.toast(f"Report for {name} emailed!", icon="📧")
+        report = {"Name": name, "Age": age, "Gender": gender, "Disease": disease, "Prob": round(prob, 2), "Risk": status, "Urgency": action, "vitals": raw_vitals}
+        html_doc = create_pdf_report(report, info, reasons, warnings)
+        st.download_button("Download Full Report", html_doc, file_name=f"{name}_Report.html", mime="text/html")
+        if doc_email and send_to_doctor(doc_email, report, reasons, warnings):
+            st.toast("Report Transmitted to MD", icon="📧")
