@@ -18,16 +18,22 @@ def load_ml_assets():
 
 @st.cache_data
 def load_clinical_data():
-    # Loading your new datasets
+    # 1. Load Disease symptoms (Usually UTF-8 is fine here)
     disease_df = pd.read_csv('DiseaseAndSymptoms.csv')
-    medicine_df = pd.read_csv('Medicine_description.xlsx')
-    # Clean strings to ensure matching works
-    medicine_df['Reason'] = medicine_df['Reason'].str.strip().str.title()
-    disease_df['Disease'] = disease_df['Disease'].str.strip().str.title()
-    return disease_df, medicine_df
+    
+    # 2. Load Medicine data with Encoding Fix
+    # We use 'latin1' or 'cp1252' to handle Excel-style special characters
+    try:
+        med_db = pd.read_csv('Medicine_description.xlsx', encoding='utf-8')
+    except UnicodeDecodeError:
+        # If UTF-8 fails, use latin1 which is more forgiving
+        med_db = pd.read_csv('Medicine_description.xlsx', encoding='latin1')
 
-model, scaler, label_encoder = load_ml_assets()
-disease_db, med_db = load_clinical_data()
+    # Clean strings to ensure matching works
+    med_db['Reason'] = med_db['Reason'].str.strip().str.title()
+    disease_df['Disease'] = disease_df['Disease'].str.strip().str.title()
+    
+    return disease_df, med_db
 
 # --- 2. CORE LOGIC ---
 try:
