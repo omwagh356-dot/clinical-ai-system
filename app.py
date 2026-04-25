@@ -135,19 +135,57 @@ if st.button("🚀 EXECUTE MULTIMODAL DIAGNOSTIC", type="primary", use_container
     tab1, tab2, tab3 = st.tabs(["📊 Analytics & Explainability", "💊 Therapy", "📄 Export & Email"])
     
     with tab1:
-        c_v1, c_v2 = st.columns(2)
-        with c_v1:
-            st.write("**Differential Diagnosis (AI Probability)**")
-            prob_df = pd.DataFrame({"Condition": label_encoder.classes_, "Prob": pred[0]*100}).sort_values("Prob")
-            st.plotly_chart(px.bar(prob_df, x="Prob", y="Condition", orientation='h', color="Prob"), use_container_width=True)
-        with c_v2:
-            st.write("**Physiological Radar Fingerprint**")
-            radar_cats = ['HR', 'SpO2', 'BP Sys', 'Temp', 'Glucose']
-            radar_vals = [hr/150, spo2/100, bps/200, (temp-30)/10, gluc/300]
-            fig_radar = go.Figure(data=go.Scatterpolar(r=radar_vals, theta=radar_cats, fill='toself'))
-            fig_radar.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 1])), showlegend=False)
-            st.plotly_chart(fig_radar, use_container_width=True)
+        col_graph1, col_graph2 = st.columns([1.2, 1]) # Adjusting column width
+        
+        with col_graph1:
+            st.markdown("#### 🎯 Differential Diagnosis (AI Confidence)")
+            # Using a custom color scale: Green for low prob, Red for high prob
+            fig = px.bar(
+                prob_df, 
+                x="Prob", 
+                y="Condition", 
+                orientation='h', 
+                color="Prob",
+                color_continuous_scale=[(0, "green"), (0.5, "yellow"), (1, "red")],
+                labels={'Prob': 'Confidence %'},
+                template="plotly_dark"
+            )
+            fig.update_layout(showlegend=False, height=450, margin=dict(l=20, r=20, t=30, b=20))
+            st.plotly_chart(fig, use_container_width=True)
 
+        with col_graph2:
+            st.markdown("#### 🕸️ Physiological Stress Fingerprint")
+            # Normalizing the radar to be more 'dramatic' for abnormal values
+            radar_cats = ['HR', 'SpO2', 'BP Sys', 'Temp', 'Glucose']
+            # Improved normalization for visibility
+            radar_vals = [
+                min(hr/160, 1.0), 
+                (100-spo2)/20, # Higher value = more 'danger' (Hypoxia)
+                min(bps/200, 1.0), 
+                min(abs(temp-37)/5, 1.0), # Deviation from normal body temp
+                min(gluc/400, 1.0)
+            ]
+            
+            fig_radar = go.Figure(data=go.Scatterpolar(
+                r=radar_vals, 
+                theta=radar_cats, 
+                fill='toself',
+                line=dict(color='#ff4b4b', width=2),
+                fillcolor='rgba(255, 75, 75, 0.3)'
+            ))
+            
+            fig_radar.update_layout(
+                polar=dict(
+                    bgcolor="rgba(0,0,0,0)",
+                    radialaxis=dict(visible=True, range=[0, 1], showticklabels=False),
+                    angularaxis=dict(gridcolor="gray")
+                ),
+                template="plotly_dark",
+                showlegend=False,
+                height=450,
+                margin=dict(l=40, r=40, t=50, b=40)
+            )
+            st.plotly_chart(fig_radar, use_container_width=True)
     with tab2:
         user_in = curr_diseases.lower()
         found_sym = False
