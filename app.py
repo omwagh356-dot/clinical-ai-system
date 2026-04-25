@@ -55,19 +55,34 @@ def load_ml_assets():
 
 @st.cache_data
 def load_clinical_data():
+    # 1. Load Disease symptoms
     disease_df = pd.read_csv('DiseaseAndSymptoms.csv')
     disease_df['Disease'] = disease_df['Disease'].astype(str).str.strip().str.title()
+    
+    # 2. Load Medicine data with extra safety
+    file_path = 'Medicine_description.xlsx'
     try:
-        # Robust loading for the 22k medicine records
-        med_db = pd.read_csv('Medicine_description.xlsx', encoding='latin1', on_bad_lines='skip', engine='python')
+        # Load with latin1 to handle Excel special characters
+        med_db = pd.read_csv(file_path, encoding='latin1', on_bad_lines='skip', engine='python')
+        
+        # --- THE FIX: Strip invisible spaces from column names ---
         med_db.columns = med_db.columns.str.strip()
-    except:
-        med_db = pd.DataFrame(columns=['Drug_Name', 'Reason', 'Description'])
-    return disease_df, med_db
+        
+        # Search for 'Reason' even if it's lowercase 'reason'
+        actual_cols = {col.lower(): col for col in med_db.columns}
+        if 'reason' in actual_cols:
+            med_db.rename(columns={actual_cols['reason']: 'Reason'}, inplace=True)
+        else:
+            st.error(f"Critical: 'Reason' column not found. Available: {list(med_db.columns)}")
+            return disease_df, pd.DataFrame(columns=['Drug_Name', 'Reason', 'Description'])
 
-# Initialize Assets
-model, scaler, label_encoder = load_ml_assets()
-disease_db, med_db = load_clinical_data()
+        med_db['Reason'] = med_db['Reason'].astype(str).str.strip().str.title()
+        
+    except Exception as e:
+        st.error(f"Failed to load medicine file: {e}")
+        return disease_df, pd.DataFrame(columns=['Drug_Name', 'Reason', 'Description'])
+    
+    return disease_df, med_db
 
 try:
     from drug_module import check_drugs
