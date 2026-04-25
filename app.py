@@ -22,23 +22,40 @@ def load_clinical_data():
     # 1. Load Disease symptoms
     disease_df = pd.read_csv('DiseaseAndSymptoms.csv')
     
-    # 2. Load Medicine data with "Power Settings"
-    # on_bad_lines='skip' ensures one broken row doesn't crash the whole app
-    # engine='python' is slower but much better at handling complex text than the default C engine
+    # 2. Load Medicine data with extra safety
     file_path = 'Medicine_description.xlsx'
-    
     try:
+        # We load without a header first to see if the first row is messy
         med_db = pd.read_csv(
             file_path, 
             encoding='latin1', 
             on_bad_lines='skip', 
-            engine='python',
-            quoting=1 # This handles descriptions containing commas
+            engine='python'
         )
+        
+        # CLEANING THE COLUMNS: This removes hidden spaces and special characters
+        med_db.columns = med_db.columns.str.strip()
+        
+        # Standardize the 'Reason' column if it exists, otherwise find the closest match
+        if 'Reason' not in med_db.columns:
+            # If 'Reason' is missing, let's look for 'reason' or similar
+            actual_cols = {col.lower(): col for col in med_db.columns}
+            if 'reason' in actual_cols:
+                med_db.rename(columns={actual_cols['reason']: 'Reason'}, inplace=True)
+            else:
+                st.error(f"Critical Error: Could not find 'Reason' column. Available columns: {list(med_db.columns)}")
+                # Fallback to avoid app crash
+                return disease_df, pd.DataFrame(columns=['Drug_Name', 'Reason', 'Description'])
+
     except Exception as e:
-        st.error(f"Error loading medicine database: {e}")
-        # Fallback to an empty dataframe so the app doesn't crash
-        med_db = pd.DataFrame(columns=['Drug_Name', 'Reason', 'Description'])
+        st.error(f"Failed to load medicine file: {e}")
+        return disease_df, pd.DataFrame(columns=['Drug_Name', 'Reason', 'Description'])
+
+    # Final String Cleaning
+    med_db['Reason'] = med_db['Reason'].astype(str).str.strip().str.title()
+    disease_df['Disease'] = disease_df['Disease'].astype(str).str.strip().str.title()
+    
+    return disease_df, med_db
 
     # Clean strings
     med_db['Reason'] = med_db['Reason'].astype(str).str.strip().str.title()
