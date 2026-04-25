@@ -9,6 +9,7 @@ import smtplib
 from email.message import EmailMessage
 
 # --- 1. ASSET LOADING (CSVs & MODELS) ---
+# --- 1. DEFINE THE LOADING FUNCTION ---
 @st.cache_resource
 def load_ml_assets():
     model = load_model("model/model.h5")
@@ -16,7 +17,16 @@ def load_ml_assets():
     label_encoder = joblib.load("label_encoder.pkl")
     return model, scaler, label_encoder
 
+# --- 2. EXECUTE THE FUNCTION AT THE TOP LEVEL ---
+# This makes 'scaler', 'model', and 'label_encoder' available to the whole app
+model, scaler, label_encoder = load_ml_assets()
+
+# --- 3. NOW YOUR BUTTON LOGIC WILL WORK ---
+if st.button("🚀 EXECUTE MULTIMODAL DIAGNOSTIC"):
+    # This line will no longer fail because 'scaler' is defined above!
+    scaled = scaler.transform(inputs_df)
 @st.cache_data
+
 def load_clinical_data():
     # 1. Load Disease symptoms (Usually UTF-8 is fine here)
     disease_df = pd.read_csv('DiseaseAndSymptoms.csv')
