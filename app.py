@@ -33,7 +33,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------- LOAD MODEL FILES ----------------
+# ---------------- CHECK FILES ----------------
 required_files = ["model.pkl", "scaler.pkl", "label_encoder.pkl", "features.pkl"]
 
 for f in required_files:
@@ -41,12 +41,13 @@ for f in required_files:
         st.error(f"❌ Missing file: {f}")
         st.stop()
 
+# ---------------- LOAD MODEL ----------------
 model = joblib.load("model.pkl")
 scaler = joblib.load("scaler.pkl")
 label_encoder = joblib.load("label_encoder.pkl")
 features = joblib.load("features.pkl")
 
-# ---------------- LOAD MEDICINE DATA ----------------
+# ---------------- LOAD MEDICINE ----------------
 @st.cache_data
 def load_meds():
     try:
@@ -55,6 +56,8 @@ def load_meds():
 
         if 'res' in df.columns:
             df = df.rename(columns={'res': 'Reason'})
+
+        df['Reason'] = df['Reason'].astype(str)
 
         return df
     except:
@@ -80,7 +83,7 @@ def encode_symptoms(text, feature_list):
 
     return vector
 
-# ---------------- EMAIL FUNCTION ----------------
+# ---------------- EMAIL ----------------
 def send_email(receiver, name, disease, status):
     try:
         msg = EmailMessage()
@@ -118,7 +121,6 @@ def generate_report(name, disease, prob, status):
 
 # ---------------- UI ----------------
 st.title("🛡️ AI Clinical Decision Support System")
-st.caption("ML + Clinical Logic + Dashboard + Alerts")
 
 col1, col2 = st.columns(2)
 
@@ -136,41 +138,40 @@ with col2:
 
 symptoms = st.text_area("Symptoms (e.g. fever, cough, rash)")
 
-# ---------------- RUN MODEL ----------------
+# ---------------- RUN ----------------
 if st.button("🚀 Run Diagnosis"):
 
-    # --- Encode symptoms ---
+    # --- Encode ---
     symptom_vector = encode_symptoms(symptoms, features)
-
-    # --- Add vitals ---
     vitals = [age, hr, bp, spo2, temp, gluc]
 
-    # --- Final input ---
     input_data = symptom_vector + vitals
     input_df = pd.DataFrame([input_data], columns=features)
 
-    # --- Scale ---
     scaled = scaler.transform(input_df)
 
-    # --- Predict ---
     prediction = model.predict(scaled)
     prob = model.predict_proba(scaled)
 
     disease = label_encoder.inverse_transform(prediction)[0]
     confidence = np.max(prob) * 100
 
-    # ---------------- SMART CLINICAL LOGIC ----------------
     symptom_text = symptoms.lower()
 
-    if confidence < 60:
-        if temp >= 38:
-            disease = "Fever"
-        elif spo2 < 92:
-            disease = "Respiratory"
-        elif gluc > 200:
-            disease = "Diabetes"
-        elif "rash" in symptom_text:
-            disease = "Allergy"
+    # ---------------- STRONG MEDICAL OVERRIDE ----------------
+    if "fever" in symptom_text or temp >= 38:
+        disease = "Fever"
+        confidence = max(confidence, 85)
+
+    elif "cough" in symptom_text or spo2 < 92:
+        disease = "Respiratory"
+        confidence = max(confidence, 80)
+
+    elif "rash" in symptom_text:
+        disease = "Allergy"
+
+    elif gluc > 200:
+        disease = "Diabetes"
 
     # ---------------- STATUS ----------------
     status = "🟢 STABLE"
@@ -186,15 +187,12 @@ if st.button("🚀 Run Diagnosis"):
     </div>
     """, unsafe_allow_html=True)
 
-    if confidence < 50:
-        st.warning("⚠️ Low confidence → clinical rules applied")
-
     # ---------------- EMAIL ----------------
     if email:
         if send_email(email, name, disease, status):
-            st.success("📧 Alert sent to doctor")
+            st.success("📧 Alert sent")
         else:
-            st.error("Email failed. Check secrets.")
+            st.error("Email failed")
 
     # ---------------- DASHBOARD ----------------
     st.subheader("📊 Prediction Probabilities")
@@ -206,41 +204,44 @@ if st.button("🚀 Run Diagnosis"):
         }),
         x="Probability",
         y="Disease",
-        orientation='h',
-        color="Probability"
+        orientation='h'
     )
-
-    fig.update_layout(
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)',
-        font=dict(color='white')
-    )
-
     st.plotly_chart(fig, use_container_width=True)
 
-    # ---------------- MEDICINES ----------------
+    # ---------------- MEDICINE SEARCH (FIXED) ----------------
     st.subheader("💊 Recommended Medicines")
+
+    search_terms = [disease.lower()]
+
+    if "fever" in symptom_text:
+        search_terms.append("fever")
+    if "cough" in symptom_text:
+        search_terms.append("cold")
+
+    query = "|".join(search_terms)
 
     if 'Reason' in med_db.columns:
         meds = med_db[
-            med_db['Reason'].str.lower().str.contains(disease.lower(), na=False)
+            med_db['Reason'].str.lower().str.contains(query, na=False)
         ]
     else:
         meds = pd.DataFrame()
 
-    if not meds.empty:
-        for _, row in meds.head(10).iterrows():
-            st.markdown(f"""
-            <div class='med-card'>
-                <b>{row['Drug_Name']}</b><br>
-                <i>{row['Reason']}</i><br>
-                <small>{row['Description']}</small>
-            </div>
-            """, unsafe_allow_html=True)
-    else:
-        st.warning("No medicines found")
+    # fallback
+    if meds.empty:
+        st.warning("No exact match → showing general medicines")
+        meds = med_db.head(5)
 
-    # ---------------- REPORT DOWNLOAD ----------------
+    for _, row in meds.head(10).iterrows():
+        st.markdown(f"""
+        <div class='med-card'>
+            <b>{row['Drug_Name']}</b><br>
+            <i>{row['Reason']}</i><br>
+            <small>{row['Description']}</small>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ---------------- REPORT ----------------
     report = generate_report(name, disease, round(confidence,2), status)
 
     st.download_button(
