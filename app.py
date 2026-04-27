@@ -45,6 +45,7 @@ st.markdown("""
 model = joblib.load("model.pkl")
 scaler = joblib.load("scaler.pkl")
 label_encoder = joblib.load("label_encoder.pkl")
+features = joblib.load("features.pkl")
 
 # ---------------- LOAD MED DATA ----------------
 @st.cache_data
@@ -61,6 +62,23 @@ def load_meds():
         return pd.DataFrame(columns=["Drug_Name", "Reason", "Description"])
 
 med_db = load_meds()
+
+# ---------------- VECTOR ----------------
+def encode_symptoms(user_text, feature_list):
+    user_text = user_text.lower()
+    vector = []
+
+    for feature in feature_list:
+        if feature in ['age','hr','bp','spo2','temp','glucose']:
+            continue
+
+        if feature.replace("_", " ") in user_text:
+            vector.append(1)
+        else:
+            vector.append(0)
+
+    return vector
+
 
 # ---------------- EMAIL ----------------
 def send_email(receiver, name, disease, status):
