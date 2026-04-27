@@ -8,16 +8,40 @@ import joblib
 import smtplib
 from email.message import EmailMessage
 
-# --- 1. DATA LOADING (The "res" Fix) ---
+# --- 1. CORE FUNCTIONS ---
+
+def create_clinical_report(report, reasons, warnings):
+    return f"""<div style='font-family:Arial; border:2px solid #333; padding:20px; border-radius:10px;'>
+    <h2 style='color:#1a73e8; text-align:center;'>Clinical AI Diagnostic Report</h2>
+    <hr><p><b>Patient:</b> {report['Name']} | <b>Age:</b> {report['Age']}</p>
+    <div style='background:#f0f2f6; padding:15px; border-radius:10px;'>
+    <h3>Diagnosis: {report['Disease']}</h3>
+    <p style='color:#d93025;'><b>Triage: {report['Risk']}</b></p></div>
+    <h4>Analysis:</h4><ul>{"".join([f"<li>{r}</li>" for r in reasons])}</ul></div>"""
+
+def send_to_physician(receiver, report, reasons):
+    msg = EmailMessage()
+    msg['Subject'] = f"🚨 {report['Risk']} Alert - {report['Name']}"
+    msg['From'] = st.secrets.get("EMAIL_USER", "")
+    msg['To'] = receiver
+    msg.set_content(f"Clinical Alert: {report['Disease']}. Analysis: {reasons}")
+    try:
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+            smtp.login(st.secrets["EMAIL_USER"], st.secrets["EMAIL_PASS"])
+            smtp.send_message(msg)
+        return True
+    except: return False
+
+# --- 2. DATA LOADING (The 'res' Fix) ---
 
 @st.cache_data
 def load_clinical_data():
     disease_df = pd.read_csv('DiseaseAndSymptoms.csv')
     disease_df['Disease'] = disease_df['Disease'].astype(str).str.strip().str.title()
     try:
-        # Renaming the 'res' column you created to 'Reason' internally
         df = pd.read_csv('Medicine_description.xlsx', sep=None, engine='python', encoding='latin1')
         df.columns = [col.strip().replace('ï»¿', '') for col in df.columns]
+        # Map your renamed 'res' column
         if 'res' in df.columns: df = df.rename(columns={'res': 'Reason'})
         else: df = df.rename(columns={df.columns[1]: 'Reason'})
         df['Reason'] = df['Reason'].fillna('Unknown').astype(str).str.strip().str.title()
@@ -41,7 +65,7 @@ try:
 except:
     st.error("Missing Logic Modules.")
 
-# --- 2. UI LAYOUT ---
+# --- 3. UI LAYOUT ---
 
 st.set_page_config(page_title="Advanced CDSS", layout="wide")
 st.title("🛡️ Enterprise Clinical Decision Support System")
@@ -51,10 +75,8 @@ with c1:
     st.subheader("👤 Patient Identity")
     name = st.text_input("Patient Name")
     doc_email = st.text_input("Physician Email")
-    gender = st.selectbox("Gender", ["Male", "Female", "Other"])
     age = st.number_input("Age", 1, 120, 30)
-    
-    st.subheader("📉 Vitals")
+    st.subheader("📉 Clinical Vitals")
     v1, v2, v3 = st.columns(3)
     hr = v1.number_input("Heart Rate", value=72.0)
     bps = v1.number_input("BP Systolic", value=120.0)
@@ -64,33 +86,31 @@ with c1:
 
 with c2:
     st.subheader("🧪 Clinical Context")
-    curr_syms = st.text_area("Symptoms (e.g. fever, cough, acne, wound)")
+    curr_syms = st.text_area("Symptoms (fever, cough, runny nose, acne, wound)")
     curr_meds = st.text_area("Current Medications")
     curr_allergies = st.text_area("Allergies")
 
-# --- 3. DIAGNOSTIC ENGINE ---
+# --- 4. EXECUTION ENGINE ---
 
-if st.button("🚀 EXECUTE FULL SCAN", type="primary", width="stretch"):
-    # AI Prediction
-    raw_vitals = [age, hr, bps, 80.0, spo2, temp, 190.0, gluc, 16.0] 
-    scaled = scaler.transform(pd.DataFrame([raw_vitals], columns=scaler.feature_names_in_))
-    prediction = model.predict(scaled, verbose=0)
+if st.button("🚀 EXECUTE FULL SCAN", type="primary", use_container_width=True):
+    # Predict
+    raw = [age, hr, bps, 80.0, spo2, temp, 190.0, gluc, 16.0] 
+    scaled = scaler.transform(pd.DataFrame([raw], columns=scaler.feature_names_in_))
+    pred = model.predict(scaled, verbose=0)
     
-    idx = np.argmax(prediction)
+    idx = np.argmax(pred)
     disease = label_encoder.inverse_transform([idx])[0]
-    prob = prediction[0][idx] * 100
+    prob = pred[0][idx] * 100
 
-    # --- THE WEIGHTAGE FIX ---
-    # Overriding 'Normal' if obvious symptoms are present
-    symptom_text = curr_syms.lower()
-    if temp >= 38.5 or "fever" in symptom_text or "cough" in symptom_text:
+    # WEIGHTAGE FIX: Clinical Overrides
+    symptom_txt = curr_syms.lower()
+    if temp >= 39.0 or "fever" in symptom_txt or "cough" in symptom_txt:
         if disease == "Normal":
-            disease = "Fever / Cough / Infection"
+            disease = "Common Cold / Infection"
             prob = 98.0
-            
-    if "pimple" in symptom_text or "acne" in symptom_text:
+    if "pimple" in symptom_txt or "acne" in symptom_txt:
         if disease == "Normal":
-            disease = "Acne Vulgaris"
+            disease = "Acne"
             prob = 95.0
 
     status = "🔴 CRITICAL" if temp >= 39.5 or spo2 < 89 else "🟢 STABLE"
@@ -103,23 +123,23 @@ if st.button("🚀 EXECUTE FULL SCAN", type="primary", width="stretch"):
     with tab1:
         g1, g2 = st.columns([1.2, 1])
         with g1:
-            st.plotly_chart(px.bar(pd.DataFrame({"Condition": label_encoder.classes_, "Prob": prediction[0]*100}), x="Prob", y="Condition", orientation='h', template="plotly_dark"), width="stretch")
+            st.plotly_chart(px.bar(pd.DataFrame({"Condition": label_encoder.classes_, "Prob": pred[0]*100}), x="Prob", y="Condition", orientation='h', template="plotly_dark"), use_container_width=True)
         with g2:
             radar_vals = [min(hr/160, 1.0), (100-spo2)/20, min(bps/200, 1.0), min(abs(temp-37)/5, 1.0), min(gluc/400, 1.0)]
             fig = go.Figure(data=go.Scatterpolar(r=radar_vals, theta=['HR', 'SpO2', 'BP', 'Temp', 'Gluc'], fill='toself', line_color=color))
             fig.update_layout(template="plotly_dark", polar=dict(radialaxis=dict(visible=False)))
-            st.plotly_chart(fig, width="stretch")
+            st.plotly_chart(fig, use_container_width=True)
 
     with tab2:
-        st.subheader(f"Therapeutic Pathway for {disease}")
+        st.subheader(f"Meds for {disease}")
         
-        # --- THE MASTER SEARCH FIX ---
-        # We break the disease name into keywords (e.g., 'Fever', 'Cough') and search them all
-        keywords = disease.replace("/", " ").split()
-        # Add symptoms as backup keywords
-        keywords += [k for k in ["Fever", "Cough", "Acne", "Wound"] if k.lower() in symptom_text]
+        # --- NEW MASTER SEARCH LOGIC ---
+        # 1. We create a list of possible words to search in the 'Reason' column
+        search_terms = disease.split() # Splits 'Common Cold' into ['Common', 'Cold']
+        search_terms += [word for word in ["Acne", "Wound", "Fever", "Cough", "Infection"] if word.lower() in symptom_txt]
         
-        query = "|".join(keywords) # This creates an 'OR' search: Fever OR Cough OR Infection
+        # 2. Perform a "Fuzzy" search in the med_db['Reason'] column
+        query = "|".join(search_terms) # Example: "Cold|Fever|Cough"
         rel_meds = med_db[med_db['Reason'].str.contains(query, case=False, na=False)].head(10)
         
         if not rel_meds.empty:
@@ -128,7 +148,9 @@ if st.button("🚀 EXECUTE FULL SCAN", type="primary", width="stretch"):
                     st.write(f"**Indication:** {row['Reason']}")
                     st.write(f"**Description:** {row['Description']}")
         else:
-            st.warning("No medicines matching these keywords found in database.")
+            st.warning("No medicines found for this profile. Try typing 'Acne' or 'Fever' in Symptoms.")
 
     with tab3:
-        st.info("Download report or email physician functionality active.")
+        report_data = {"Name": name, "Age": age, "Disease": disease, "Prob": round(prob, 2), "Risk": status}
+        html = create_clinical_report(report_data, ["Analysis..."], [])
+        st.download_button("📥 Download Report", html, file_name="Report.html", mime="text/html", use_container_width=True)
