@@ -16,11 +16,6 @@ st.markdown("""
     background: linear-gradient(to right, #0f2027, #203a43, #2c5364);
     color: white;
 }
-.card {
-    background: rgba(255,255,255,0.05);
-    padding: 20px;
-    border-radius: 15px;
-}
 .section-title {
     font-size: 22px;
     font-weight: bold;
@@ -63,7 +58,7 @@ def load_meds():
 
 med_db = load_meds()
 
-# ---------------- VECTOR ----------------
+# ---------------- ENCODE SYMPTOMS ----------------
 def encode_symptoms(user_text, feature_list):
     user_text = user_text.lower()
     vector = []
@@ -78,7 +73,6 @@ def encode_symptoms(user_text, feature_list):
             vector.append(0)
 
     return vector
-
 
 # ---------------- EMAIL ----------------
 def send_email(receiver, name, disease, status):
@@ -137,31 +131,27 @@ with col2:
     gluc = st.number_input("Glucose", value=90.0)
     email = st.text_input("Doctor Email")
 
-symptoms = st.text_area("Symptoms")
+symptoms = st.text_area("Symptoms (e.g. fever, cough, headache)")
 
 # ---------------- RUN ----------------
 if st.button("🚀 Run Diagnosis"):
 
-    # ---- FIXED INPUT MATCHING ----
-    input_dict = {
-        'age': age,
-        'hr': hr,
-        'bp': bp,
-        'spo2': spo2,
-        'temp': temp,
-        'glucose': gluc
-    }
+    # ---- Encode symptoms ----
+    symptom_vector = encode_symptoms(symptoms, features)
 
-    expected_features = scaler.feature_names_in_
+    # ---- Vitals ----
+    vitals = [age, hr, bp, spo2, temp, gluc]
 
-    for f in expected_features:
-        if f not in input_dict:
-            input_dict[f] = 0
+    # ---- Combine ----
+    input_data = symptom_vector + vitals
 
-    input_data = pd.DataFrame([input_dict])[expected_features]
+    # ---- DataFrame ----
+    input_df = pd.DataFrame([input_data], columns=features)
 
-    scaled = scaler.transform(input_data)
+    # ---- Scale ----
+    scaled = scaler.transform(input_df)
 
+    # ---- Predict ----
     prediction = model.predict(scaled)
     prob = model.predict_proba(scaled)
 
@@ -175,13 +165,6 @@ if st.button("🚀 Run Diagnosis"):
 
     color = "#28a745" if "STABLE" in status else "#ff4b4b"
 
- # ---------------- STATUS ----------------
-    status = "🟢 STABLE"
-    if temp > 39 or spo2 < 90:
-        status = "🔴 CRITICAL"
-
-    color = "#28a745" if "STABLE" in status else "#ff4b4b"
-
     # ---------------- RESULT ----------------
     st.markdown(f"""
     <div class='status-box' style='background:{color};'>
@@ -189,7 +172,10 @@ if st.button("🚀 Run Diagnosis"):
     </div>
     """, unsafe_allow_html=True)
 
-    # ---------------- EMAIL ALERT ----------------
+    if confidence < 40:
+        st.warning("⚠️ Low confidence prediction. Please verify clinically.")
+
+    # ---------------- EMAIL ----------------
     if email:
         if send_email(email, name, disease, status):
             st.success("📧 Alert sent to doctor")
@@ -201,8 +187,6 @@ if st.button("🚀 Run Diagnosis"):
 
     # -------- DASHBOARD --------
     with tab1:
-        st.markdown("<div class='section-title'>📊 Clinical Analytics</div>", unsafe_allow_html=True)
-
         fig = px.bar(
             pd.DataFrame({
                 "Condition": label_encoder.classes_,
@@ -213,13 +197,6 @@ if st.button("🚀 Run Diagnosis"):
             orientation='h',
             color="Probability"
         )
-
-        fig.update_layout(
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
-            font=dict(color='white')
-        )
-
         st.plotly_chart(fig, use_container_width=True)
 
     # -------- EXPLAINABILITY --------
@@ -227,15 +204,12 @@ if st.button("🚀 Run Diagnosis"):
         st.subheader("🔍 Feature Importance")
 
         if hasattr(model, "feature_importances_"):
-            importances = model.feature_importances_
-
             imp_df = pd.DataFrame({
-                "Feature": input_data.columns,
-                "Importance": importances
+                "Feature": input_df.columns,
+                "Importance": model.feature_importances_
             }).sort_values(by="Importance", ascending=False)
 
             st.dataframe(imp_df)
-
             fig2 = px.bar(imp_df, x="Importance", y="Feature", orientation='h')
             st.plotly_chart(fig2)
         else:
@@ -243,11 +217,11 @@ if st.button("🚀 Run Diagnosis"):
 
     # -------- MEDICINE --------
     with tab3:
-        st.markdown("<div class='section-title'>💊 Recommended Medicines</div>", unsafe_allow_html=True)
+        st.subheader("💊 Recommended Medicines")
 
         if 'Reason' in med_db.columns:
             meds_found = med_db[
-                med_db['Reason'].str.contains(disease, case=False, na=False)
+                med_db['Reason'].str.lower().str.contains(disease.lower(), na=False)
             ]
         else:
             meds_found = pd.DataFrame()
@@ -264,7 +238,7 @@ if st.button("🚀 Run Diagnosis"):
         else:
             st.warning("No medicines found")
 
-    # -------- REPORT DOWNLOAD --------
+    # -------- REPORT --------
     report_html = generate_report(name, disease, round(confidence, 2), status)
 
     st.download_button(
