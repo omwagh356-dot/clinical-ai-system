@@ -28,7 +28,7 @@ model, scaler, label_encoder = load_assets()
 # --- LOAD MED DATA ---
 @st.cache_data
 def load_meds():
-    return pd.read_csv("Medicine_description.csv")
+    return pd.read_excel("Medicine_description.xlsx")
 
 med_db = load_meds()
 
