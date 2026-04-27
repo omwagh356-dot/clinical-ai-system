@@ -1,8 +1,9 @@
 streamlit
 pandas
-numpy
 joblib
 scikit-learn
 tensorflow
 openpyxl
 plotly
+numpy==1.23.5
+shap
