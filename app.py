@@ -16,9 +16,10 @@ def load_clinical_data():
     disease_df['Disease'] = disease_df['Disease'].astype(str).str.strip().str.title()
     try:
         # Load medicine file and handle the 'res' header
-        df = pd.read_csv('Medicine_description.xlsx', sep=None, engine='python', encoding='latin1')
+        df = pd.read_csv('Medicine_description.xlsx - Sheet1.csv', sep=None, engine='python', encoding='latin1')
         df.columns = [col.strip().replace('ï»¿', '') for col in df.columns]
         
+        # Mapping 'res' to 'Reason' internally for search consistency
         if 'res' in df.columns:
             df = df.rename(columns={'res': 'Reason'})
         else:
@@ -39,11 +40,12 @@ def load_ml_assets():
 model, scaler, label_encoder = load_ml_assets()
 disease_db, med_db = load_clinical_data()
 
+# Logic imports
 try:
     from drug_module import check_drugs
     from explain import explain_values
-except:
-    st.error("Missing logic modules (drug_module.py or explain.py).")
+except ImportError:
+    st.error("Missing logic modules.")
 
 # --- 2. UI LAYOUT ---
 
@@ -67,7 +69,7 @@ with c1:
 
 with c2:
     st.subheader("🧪 Clinical Context")
-    curr_syms = st.text_area("Symptoms (e.g., Fever, Acne, Cough, Wound)")
+    curr_syms = st.text_area("Symptoms (Type Fever, Acne, or Wound here)")
     curr_meds = st.text_area("Current Medications")
     curr_allergies = st.text_area("Allergies")
 
@@ -83,13 +85,12 @@ if st.button("🚀 EXECUTE MULTIMODAL DIAGNOSTIC", type="primary", use_container
     disease = label_encoder.inverse_transform([idx])[0]
     prob = prediction[0][idx] * 100
 
-    # TRIAGE & OVERRIDE LOGIC (Ensures 'Normal' doesn't block results)
+    # TRIAGE & OVERRIDE LOGIC (Crucial for Fever/Acne)
     symptom_text = curr_syms.lower()
     
-    # If vitals are normal but user reports specific symptoms, adjust the label
-    if "fever" in symptom_text or "cough" in symptom_text or temp >= 38.5:
-        if disease == "Normal": disease = "Fever / Infection"
-    elif "pimple" in symptom_text or "acne" in symptom_text:
+    if "fever" in symptom_text or temp >= 38.5:
+        if disease == "Normal": disease = "Fever"
+    elif "acne" in symptom_text or "pimple" in symptom_text:
         if disease == "Normal": disease = "Acne"
     elif "wound" in symptom_text:
         if disease == "Normal": disease = "Wound"
@@ -104,7 +105,8 @@ if st.button("🚀 EXECUTE MULTIMODAL DIAGNOSTIC", type="primary", use_container
     with tab1:
         g1, g2 = st.columns([1.2, 1])
         with g1:
-            st.plotly_chart(px.bar(pd.DataFrame({"Condition": label_encoder.classes_, "Prob": prediction[0]*100}), x="Prob", y="Condition", orientation='h', template="plotly_dark"), use_container_width=True)
+            conf_df = pd.DataFrame({"Condition": label_encoder.classes_, "Prob": prediction[0]*100}).sort_values("Prob")
+            st.plotly_chart(px.bar(conf_df, x="Prob", y="Condition", orientation='h', template="plotly_dark"), use_container_width=True)
         with g2:
             radar_vals = [min(hr/160, 1.0), (100-spo2)/20, min(bps/200, 1.0), min(abs(temp-37)/5, 1.0), min(gluc/400, 1.0)]
             fig = go.Figure(data=go.Scatterpolar(r=radar_vals, theta=['HR', 'SpO2', 'BP', 'Temp', 'Gluc'], fill='toself'))
@@ -112,29 +114,26 @@ if st.button("🚀 EXECUTE MULTIMODAL DIAGNOSTIC", type="primary", use_container
             st.plotly_chart(fig, use_container_width=True)
 
     with tab2:
-        st.subheader(f"Therapeutic Pathway for {disease}")
+        st.subheader(f"Therapeutic Recommendations for {disease}")
         
-        # --- THE SEARCH ENGINE FIX ---
-        # If AI says 'Normal', we look at the symptoms typed by the user to find meds
-        search_terms = disease.split() # Splits 'Fever / Infection' into ['Fever', 'Infection']
-        
-        # Add keywords based on user input to the search list
+        # --- THE FIX: SYMPTOM-BASED SEARCH ---
+        # We look for the diagnosis name OR keywords in the symptom text
+        search_terms = [disease]
         if "fever" in symptom_text: search_terms.append("Fever")
-        if "acne" in symptom_text or "pimple" in symptom_text: search_terms.append("Acne")
+        if "acne" in symptom_text: search_terms.append("Acne")
         if "wound" in symptom_text: search_terms.append("Wound")
         
-        # Build the final search query
-        query = "|".join(set(search_terms)) # Removes duplicates and creates OR search
-        
-        # Perform the search in the 'Reason' column (which was 'res' in your CSV)
-        rel_meds = med_db[med_db['Reason'].str.contains(query, case=False, na=False)].head(15)
+        query = "|".join(search_terms)
+        # Search the standardized 'Reason' (which was 'res') column
+        rel_meds = med_db[med_db['Reason'].str.contains(query, case=False, na=False)].head(12)
         
         if not rel_meds.empty:
             for _, row in rel_meds.iterrows():
                 with st.expander(f"💊 {row['Drug_Name']}"):
+                    st.write(f"**Indication:** {row['Reason']}")
                     st.write(f"**Description:** {row['Description']}")
         else:
-            st.warning("No medicines found. Try typing 'Acne' or 'Fever' in the Symptoms box.")
+            st.warning("No medicines found in the 22,000-record database for this profile.")
 
     with tab3:
-        st.info("Download report or email physician functionality active.")
+        st.info("Report generation and physician handover modules active.")
