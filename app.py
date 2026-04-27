@@ -47,7 +47,7 @@ scaler = joblib.load("scaler.pkl")
 label_encoder = joblib.load("label_encoder.pkl")
 features = joblib.load("features.pkl")
 
-# ---------------- LOAD MEDICINE ----------------
+# ---------------- LOAD MED DATA ----------------
 @st.cache_data
 def load_meds():
     try:
@@ -58,7 +58,6 @@ def load_meds():
             df = df.rename(columns={'res': 'Reason'})
 
         df['Reason'] = df['Reason'].astype(str)
-
         return df
     except:
         return pd.DataFrame(columns=["Drug_Name","Reason","Description"])
@@ -121,6 +120,7 @@ def generate_report(name, disease, prob, status):
 
 # ---------------- UI ----------------
 st.title("🛡️ AI Clinical Decision Support System")
+st.caption("ML + Explainability + Clinical Intelligence")
 
 col1, col2 = st.columns(2)
 
@@ -141,7 +141,9 @@ symptoms = st.text_area("Symptoms (e.g. fever, cough, rash)")
 # ---------------- RUN ----------------
 if st.button("🚀 Run Diagnosis"):
 
-    # --- Encode ---
+    symptom_text = symptoms.lower()
+
+    # Encode input
     symptom_vector = encode_symptoms(symptoms, features)
     vitals = [age, hr, bp, spo2, temp, gluc]
 
@@ -156,9 +158,7 @@ if st.button("🚀 Run Diagnosis"):
     disease = label_encoder.inverse_transform(prediction)[0]
     confidence = np.max(prob) * 100
 
-    symptom_text = symptoms.lower()
-
-    # ---------------- STRONG MEDICAL OVERRIDE ----------------
+    # ---------------- CLINICAL OVERRIDE ----------------
     if "fever" in symptom_text or temp >= 38:
         disease = "Fever"
         confidence = max(confidence, 85)
@@ -187,59 +187,114 @@ if st.button("🚀 Run Diagnosis"):
     </div>
     """, unsafe_allow_html=True)
 
+    # ---------------- RISK & SEVERITY ----------------
+    risk = 0
+    if temp > 39: risk += 2
+    if spo2 < 90: risk += 3
+    if gluc > 200: risk += 2
+
+    severity = "Mild"
+    if risk >= 4:
+        severity = "Severe"
+    elif risk >= 2:
+        severity = "Moderate"
+
+    st.metric("⚠️ Risk Score", risk)
+    st.metric("🔥 Severity", severity)
+
     # ---------------- EMAIL ----------------
     if email:
-        if send_email(email, name, disease, status):
-            st.success("📧 Alert sent")
-        else:
-            st.error("Email failed")
+        send_email(email, name, disease, status)
 
-    # ---------------- DASHBOARD ----------------
-    st.subheader("📊 Prediction Probabilities")
+    # ---------------- TABS ----------------
+    tab1, tab2, tab3 = st.tabs([
+        "📊 Dashboard",
+        "🔍 Explainability",
+        "💊 Treatment"
+    ])
 
-    fig = px.bar(
-        pd.DataFrame({
-            "Disease": label_encoder.classes_,
-            "Probability": prob[0]*100
-        }),
-        x="Probability",
-        y="Disease",
-        orientation='h'
-    )
-    st.plotly_chart(fig, use_container_width=True)
+    # -------- DASHBOARD --------
+    with tab1:
+        fig = px.bar(
+            pd.DataFrame({
+                "Disease": label_encoder.classes_,
+                "Probability": prob[0]*100
+            }),
+            x="Probability",
+            y="Disease",
+            orientation='h'
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
-    # ---------------- MEDICINE SEARCH (FIXED) ----------------
-    st.subheader("💊 Recommended Medicines")
+    # -------- EXPLAINABILITY --------
+    with tab2:
+        st.subheader("Model Feature Importance")
 
-    search_terms = [disease.lower()]
+        if hasattr(model, "feature_importances_"):
+            imp_df = pd.DataFrame({
+                "Feature": input_df.columns,
+                "Importance": model.feature_importances_
+            }).sort_values(by="Importance", ascending=False)
 
-    if "fever" in symptom_text:
-        search_terms.append("fever")
-    if "cough" in symptom_text:
-        search_terms.append("cold")
+            st.dataframe(imp_df)
 
-    query = "|".join(search_terms)
+            fig2 = px.bar(imp_df.head(10),
+                          x="Importance",
+                          y="Feature",
+                          orientation='h')
+            st.plotly_chart(fig2)
 
-    if 'Reason' in med_db.columns:
+        st.subheader("Clinical Reasoning")
+
+        reasons = []
+
+        if temp >= 38:
+            reasons.append("High temperature indicates fever/infection")
+
+        if spo2 < 92:
+            reasons.append("Low oxygen suggests respiratory issue")
+
+        if gluc > 200:
+            reasons.append("High glucose indicates diabetes risk")
+
+        if "cough" in symptom_text:
+            reasons.append("Cough supports respiratory diagnosis")
+
+        if "rash" in symptom_text:
+            reasons.append("Rash indicates allergy")
+
+        for r in reasons:
+            st.write("✔", r)
+
+    # -------- TREATMENT --------
+    with tab3:
+        st.subheader("💊 Recommended Medicines")
+
+        search_terms = [disease.lower()]
+
+        if "fever" in symptom_text:
+            search_terms.append("fever")
+
+        if "cough" in symptom_text:
+            search_terms.append("cold")
+
+        query = "|".join(search_terms)
+
         meds = med_db[
             med_db['Reason'].str.lower().str.contains(query, na=False)
         ]
-    else:
-        meds = pd.DataFrame()
 
-    # fallback
-    if meds.empty:
-        st.warning("No exact match → showing general medicines")
-        meds = med_db.head(5)
+        if meds.empty:
+            meds = med_db.head(5)
 
-    for _, row in meds.head(10).iterrows():
-        st.markdown(f"""
-        <div class='med-card'>
-            <b>{row['Drug_Name']}</b><br>
-            <i>{row['Reason']}</i><br>
-            <small>{row['Description']}</small>
-        </div>
-        """, unsafe_allow_html=True)
+        for _, row in meds.head(10).iterrows():
+            st.markdown(f"""
+            <div class='med-card'>
+                <b>{row['Drug_Name']}</b><br>
+                <i>{row['Reason']}</i><br>
+                <small>{row['Description']}</small>
+            </div>
+            """, unsafe_allow_html=True)
 
     # ---------------- REPORT ----------------
     report = generate_report(name, disease, round(confidence,2), status)
