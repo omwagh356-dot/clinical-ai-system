@@ -7,18 +7,14 @@ import smtplib
 from email.message import EmailMessage
 
 # ---------------- CONFIG ----------------
-st.set_page_config(page_title="AI Clinical System", layout="wide")
+st.set_page_config(page_title="Clinical AI System", layout="wide")
 
-# ---------------- UI STYLE ----------------
+# ---------------- STYLE ----------------
 st.markdown("""
 <style>
 .stApp {
     background: linear-gradient(to right, #0f2027, #203a43, #2c5364);
     color: white;
-}
-.section-title {
-    font-size: 22px;
-    font-weight: bold;
 }
 .status-box {
     padding: 20px;
@@ -36,38 +32,38 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------- LOAD MODEL ----------------
+# ---------------- LOAD FILES ----------------
 model = joblib.load("model.pkl")
 scaler = joblib.load("scaler.pkl")
 label_encoder = joblib.load("label_encoder.pkl")
 features = joblib.load("features.pkl")
 
-# ---------------- LOAD MED DATA ----------------
+# ---------------- LOAD MEDS ----------------
 @st.cache_data
 def load_meds():
     try:
         df = pd.read_excel("Medicine_description.xlsx")
-        df.columns = [col.strip() for col in df.columns]
-
+        df.columns = [c.strip() for c in df.columns]
         if 'res' in df.columns:
             df = df.rename(columns={'res': 'Reason'})
-
         return df
     except:
-        return pd.DataFrame(columns=["Drug_Name", "Reason", "Description"])
+        return pd.DataFrame(columns=["Drug_Name","Reason","Description"])
 
 med_db = load_meds()
 
-# ---------------- ENCODE SYMPTOMS ----------------
-def encode_symptoms(user_text, feature_list):
-    user_text = user_text.lower()
+# ---------------- SYMPTOM ENCODING ----------------
+def encode_symptoms(text, feature_list):
+    text = text.lower()
     vector = []
 
-    for feature in feature_list:
-        if feature in ['age','hr','bp','spo2','temp','glucose']:
+    for f in feature_list:
+        if f in ['age','hr','bp','spo2','temp','glucose']:
             continue
 
-        if feature.replace("_", " ") in user_text:
+        words = f.replace("_"," ").split()
+
+        if any(w in text for w in words):
             vector.append(1)
         else:
             vector.append(0)
@@ -110,12 +106,8 @@ def generate_report(name, disease, prob, status):
     </html>
     """
 
-# ---------------- HEADER ----------------
+# ---------------- UI ----------------
 st.title("🛡️ AI Clinical Decision Support System")
-st.caption("Diagnosis • Dashboard • Explainability • Alerts")
-
-# ---------------- INPUT ----------------
-st.markdown("<div class='section-title'>👤 Patient Details</div>", unsafe_allow_html=True)
 
 col1, col2 = st.columns(2)
 
@@ -131,32 +123,46 @@ with col2:
     gluc = st.number_input("Glucose", value=90.0)
     email = st.text_input("Doctor Email")
 
-symptoms = st.text_area("Symptoms (e.g. fever, cough, headache)")
+symptoms = st.text_area("Symptoms (e.g. fever, cough, rash)")
 
 # ---------------- RUN ----------------
 if st.button("🚀 Run Diagnosis"):
 
-    # ---- Encode symptoms ----
+    # ---- ML INPUT ----
     symptom_vector = encode_symptoms(symptoms, features)
-
-    # ---- Vitals ----
     vitals = [age, hr, bp, spo2, temp, gluc]
 
-    # ---- Combine ----
     input_data = symptom_vector + vitals
-
-    # ---- DataFrame ----
     input_df = pd.DataFrame([input_data], columns=features)
 
-    # ---- Scale ----
     scaled = scaler.transform(input_df)
 
-    # ---- Predict ----
     prediction = model.predict(scaled)
     prob = model.predict_proba(scaled)
 
     disease = label_encoder.inverse_transform(prediction)[0]
     confidence = np.max(prob) * 100
+
+    # ---------------- CLINICAL OVERRIDE ----------------
+    symptom_text = symptoms.lower()
+
+    if temp >= 38:
+        disease = "Fever"
+
+    if spo2 < 92:
+        disease = "Respiratory Issue"
+
+    if gluc > 200:
+        disease = "Diabetes"
+
+    if "fever" in symptom_text:
+        disease = "Fever"
+
+    if "cough" in symptom_text:
+        disease = "Respiratory Infection"
+
+    if "rash" in symptom_text:
+        disease = "Allergy"
 
     # ---------------- STATUS ----------------
     status = "🟢 STABLE"
@@ -165,85 +171,65 @@ if st.button("🚀 Run Diagnosis"):
 
     color = "#28a745" if "STABLE" in status else "#ff4b4b"
 
-    # ---------------- RESULT ----------------
+    # ---------------- OUTPUT ----------------
     st.markdown(f"""
     <div class='status-box' style='background:{color};'>
         {status} : {disease} ({round(confidence,2)}%)
     </div>
     """, unsafe_allow_html=True)
 
-    if confidence < 40:
-        st.warning("⚠️ Low confidence prediction. Please verify clinically.")
+    if confidence < 50:
+        st.warning("⚠️ Low confidence prediction. Clinical rules applied.")
 
     # ---------------- EMAIL ----------------
     if email:
         if send_email(email, name, disease, status):
             st.success("📧 Alert sent to doctor")
         else:
-            st.error("Email failed. Check secrets.")
+            st.error("Email failed")
 
-    # ---------------- TABS ----------------
-    tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "🔍 Explainability", "💊 Treatment"])
+    # ---------------- DASHBOARD ----------------
+    st.subheader("📊 Prediction Probabilities")
 
-    # -------- DASHBOARD --------
-    with tab1:
-        fig = px.bar(
-            pd.DataFrame({
-                "Condition": label_encoder.classes_,
-                "Probability": prob[0] * 100
-            }),
-            x="Probability",
-            y="Condition",
-            orientation='h',
-            color="Probability"
-        )
-        st.plotly_chart(fig, use_container_width=True)
+    fig = px.bar(
+        pd.DataFrame({
+            "Disease": label_encoder.classes_,
+            "Probability": prob[0]*100
+        }),
+        x="Probability",
+        y="Disease",
+        orientation='h'
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
-    # -------- EXPLAINABILITY --------
-    with tab2:
-        st.subheader("🔍 Feature Importance")
+    # ---------------- MEDICINES ----------------
+    st.subheader("💊 Recommended Medicines")
 
-        if hasattr(model, "feature_importances_"):
-            imp_df = pd.DataFrame({
-                "Feature": input_df.columns,
-                "Importance": model.feature_importances_
-            }).sort_values(by="Importance", ascending=False)
+    if 'Reason' in med_db.columns:
+        meds = med_db[
+            med_db['Reason'].str.lower().str.contains(disease.lower(), na=False)
+        ]
+    else:
+        meds = pd.DataFrame()
 
-            st.dataframe(imp_df)
-            fig2 = px.bar(imp_df, x="Importance", y="Feature", orientation='h')
-            st.plotly_chart(fig2)
-        else:
-            st.info("Model does not support feature importance")
+    if not meds.empty:
+        for _, row in meds.head(10).iterrows():
+            st.markdown(f"""
+            <div class='med-card'>
+                <b>{row['Drug_Name']}</b><br>
+                <i>{row['Reason']}</i><br>
+                <small>{row['Description']}</small>
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.warning("No medicines found")
 
-    # -------- MEDICINE --------
-    with tab3:
-        st.subheader("💊 Recommended Medicines")
-
-        if 'Reason' in med_db.columns:
-            meds_found = med_db[
-                med_db['Reason'].str.lower().str.contains(disease.lower(), na=False)
-            ]
-        else:
-            meds_found = pd.DataFrame()
-
-        if not meds_found.empty:
-            for _, row in meds_found.head(10).iterrows():
-                st.markdown(f"""
-                <div class='med-card'>
-                    <b>{row['Drug_Name']}</b><br>
-                    <i>{row['Reason']}</i><br>
-                    <small>{row['Description']}</small>
-                </div>
-                """, unsafe_allow_html=True)
-        else:
-            st.warning("No medicines found")
-
-    # -------- REPORT --------
-    report_html = generate_report(name, disease, round(confidence, 2), status)
+    # ---------------- REPORT ----------------
+    report = generate_report(name, disease, round(confidence,2), status)
 
     st.download_button(
         "📄 Download Report",
-        report_html,
+        report,
         file_name=f"{name}_report.html",
         mime="text/html"
     )
