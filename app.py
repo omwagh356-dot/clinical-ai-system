@@ -138,8 +138,26 @@ with st.container():
 # ---------------- RUN MODEL ----------------
 if st.button("🚀 Run Diagnosis"):
 
-    input_data = pd.DataFrame([[age, hr, bp, spo2, temp, gluc]],
-                              columns=scaler.feature_names_in_)
+    # Create input dictionary dynamically
+    input_dict = {
+        'age': age,
+        'hr': hr,
+        'bp': bp,
+        'spo2': spo2,
+        'temp': temp,
+        'glucose': gluc
+    }
+
+# Match model features exactly
+expected_features = scaler.feature_names_in_
+
+# Fill missing features with default values
+for feature in expected_features:
+    if feature not in input_dict:
+        input_dict[feature] = 0
+
+# Create DataFrame in correct order
+input_data = pd.DataFrame([input_dict])[expected_features]
 
     scaled = scaler.transform(input_data)
 
