@@ -4,10 +4,9 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import joblib
-import shap
 import smtplib
 from email.message import EmailMessage
-from explain import init_explainer, get_shap_values
+
 
 # --- LOAD MODEL ---
 
@@ -134,20 +133,20 @@ if st.button("🚀 Run Diagnosis"):
 
     # ---------------- SHAP ----------------
     with tabs[1]:
-        st.subheader("🔍 Model Explainability (SHAP)")
+    st.subheader("🔍 Model Explainability")
 
-        shap_values = get_shap_values(input_df)
+    importances = model.feature_importances_
 
-        st.write("Feature Impact:")
-        shap_df = pd.DataFrame({
-            "Feature": input_df.columns,
-            "Impact": shap_values.values[0]
-        }).sort_values(by="Impact", key=abs, ascending=False)
+    imp_df = pd.DataFrame({
+        "Feature": input_df.columns,
+        "Importance": importances
+    }).sort_values(by="Importance", ascending=False)
 
-        st.dataframe(shap_df)
+    st.dataframe(imp_df)
 
-        fig = px.bar(shap_df, x="Impact", y="Feature", orientation='h')
-        st.plotly_chart(fig)
+    fig = px.bar(imp_df, x="Importance", y="Feature", orientation='h')
+    st.plotly_chart(fig)
+
 
     # ---------------- TREATMENT ----------------
     with tabs[2]:
