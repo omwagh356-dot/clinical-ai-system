@@ -133,19 +133,19 @@ if st.button("🚀 Run Diagnosis"):
 
     # ---------------- SHAP ----------------
     with tabs[1]:
-    st.subheader("🔍 Model Explainability")
+        st.subheader("🔍 Model Explainability")
 
-    importances = model.feature_importances_
+        importances = model.feature_importances_
 
-    imp_df = pd.DataFrame({
-        "Feature": input_df.columns,
-        "Importance": importances
-    }).sort_values(by="Importance", ascending=False)
+        imp_df = pd.DataFrame({
+            "Feature": input_df.columns,
+            "Importance": importances
+        }).sort_values(by="Importance", ascending=False)
 
-    st.dataframe(imp_df)
+        st.dataframe(imp_df)
 
-    fig = px.bar(imp_df, x="Importance", y="Feature", orientation='h')
-    st.plotly_chart(fig)
+        fig = px.bar(imp_df, x="Importance", y="Feature", orientation='h')
+        st.plotly_chart(fig)
 
 
     # ---------------- TREATMENT ----------------
