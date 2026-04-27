@@ -4,7 +4,7 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import joblib
-import shap
+#import shap
 import smtplib
 from email.message import EmailMessage
 from explain import init_explainer, get_shap_values
