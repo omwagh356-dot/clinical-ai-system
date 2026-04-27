@@ -16,7 +16,7 @@ def load_clinical_data():
     disease_df['Disease'] = disease_df['Disease'].astype(str).str.strip().str.title()
     try:
         # Renaming the 'res' column you created to 'Reason' internally
-        df = pd.read_csv('Medicine_description.xlsx - Sheet1.csv', sep=None, engine='python', encoding='latin1')
+        df = pd.read_csv('Medicine_description.xlsx', sep=None, engine='python', encoding='latin1')
         df.columns = [col.strip().replace('ï»¿', '') for col in df.columns]
         if 'res' in df.columns: df = df.rename(columns={'res': 'Reason'})
         else: df = df.rename(columns={df.columns[1]: 'Reason'})
