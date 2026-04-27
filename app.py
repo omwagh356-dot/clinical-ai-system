@@ -121,6 +121,7 @@ def generate_report(name, disease, prob, status):
 # ---------------- UI ----------------
 st.title("🛡️ AI Clinical Decision Support System")
 st.caption("ML + Explainability + Clinical Intelligence")
+st.caption("Msc - Data Sciencec Project | Onkar Suresh Wagh")
 
 col1, col2 = st.columns(2)
 
