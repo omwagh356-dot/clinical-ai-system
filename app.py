@@ -152,7 +152,7 @@ if st.button("🚀 Run Diagnosis"):
     with tabs[2]:
         st.subheader("💊 Recommended Medicines")
 
-        meds_found = med_db[med_db['Reason'].str.contains(disease, case=False, na=False)]
+        meds_found = med_db[med_db['res'].str.contains(disease, case=False, na=False)]
 
         if not meds_found.empty:
             for _, row in meds_found.head(5).iterrows():
