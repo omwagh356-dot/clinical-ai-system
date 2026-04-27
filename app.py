@@ -9,7 +9,7 @@ from email.message import EmailMessage
 # ---------------- CONFIG ----------------
 st.set_page_config(page_title="AI Clinical System", layout="wide")
 
-# ---------------- CUSTOM UI ----------------
+# ---------------- UI STYLE ----------------
 st.markdown("""
 <style>
 .stApp {
@@ -20,7 +20,6 @@ st.markdown("""
     background: rgba(255,255,255,0.05);
     padding: 20px;
     border-radius: 15px;
-    margin-bottom: 15px;
 }
 .section-title {
     font-size: 22px;
@@ -38,13 +37,6 @@ st.markdown("""
     padding: 15px;
     border-radius: 10px;
     margin-bottom: 10px;
-}
-div.stButton > button {
-    background: linear-gradient(90deg, #00c6ff, #0072ff);
-    color: white;
-    border-radius: 10px;
-    height: 3em;
-    font-size: 16px;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -66,12 +58,11 @@ def load_meds():
 
         return df
     except:
-        st.warning("Medicine dataset not found")
         return pd.DataFrame(columns=["Drug_Name", "Reason", "Description"])
 
 med_db = load_meds()
 
-# ---------------- EMAIL FUNCTION ----------------
+# ---------------- EMAIL ----------------
 def send_email(receiver, name, disease, status):
     try:
         msg = EmailMessage()
@@ -81,7 +72,7 @@ def send_email(receiver, name, disease, status):
 
         msg.set_content(f"""
 Patient: {name}
-Condition: {disease}
+Disease: {disease}
 Status: {status}
 """)
 
@@ -93,12 +84,12 @@ Status: {status}
     except:
         return False
 
-# ---------------- REPORT FUNCTION ----------------
+# ---------------- REPORT ----------------
 def generate_report(name, disease, prob, status):
     return f"""
     <html>
     <body>
-    <h2>Clinical Diagnostic Report</h2>
+    <h2>Clinical Report</h2>
     <p><b>Patient:</b> {name}</p>
     <p><b>Disease:</b> {disease}</p>
     <p><b>Confidence:</b> {prob}%</p>
@@ -109,36 +100,31 @@ def generate_report(name, disease, prob, status):
 
 # ---------------- HEADER ----------------
 st.title("🛡️ AI Clinical Decision Support System")
-st.caption("Real-time Diagnosis • Smart Treatment • Explainability")
+st.caption("Diagnosis • Dashboard • Explainability • Alerts")
 
 # ---------------- INPUT ----------------
 st.markdown("<div class='section-title'>👤 Patient Details</div>", unsafe_allow_html=True)
 
-with st.container():
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
+col1, col2 = st.columns(2)
 
-    col1, col2 = st.columns(2)
+with col1:
+    name = st.text_input("Patient Name")
+    age = st.number_input("Age", 1, 120, 30)
+    hr = st.number_input("Heart Rate", value=72.0)
+    bp = st.number_input("Blood Pressure", value=120.0)
 
-    with col1:
-        name = st.text_input("Patient Name")
-        age = st.number_input("Age", 1, 120, 30)
-        hr = st.number_input("Heart Rate", value=72.0)
-        bp = st.number_input("Blood Pressure", value=120.0)
+with col2:
+    spo2 = st.number_input("SpO2", value=98.0)
+    temp = st.number_input("Temperature", value=37.0)
+    gluc = st.number_input("Glucose", value=90.0)
+    email = st.text_input("Doctor Email")
 
-    with col2:
-        spo2 = st.number_input("SpO2", value=98.0)
-        temp = st.number_input("Temperature", value=37.0)
-        gluc = st.number_input("Glucose", value=90.0)
-        email = st.text_input("Doctor Email")
+symptoms = st.text_area("Symptoms")
 
-    symptoms = st.text_area("Symptoms")
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-# ---------------- RUN MODEL ----------------
+# ---------------- RUN ----------------
 if st.button("🚀 Run Diagnosis"):
 
-    # Create input dictionary dynamically
+    # ---- FIXED INPUT MATCHING ----
     input_dict = {
         'age': age,
         'hr': hr,
@@ -148,24 +134,21 @@ if st.button("🚀 Run Diagnosis"):
         'glucose': gluc
     }
 
-# Match model features exactly
-expected_features = scaler.feature_names_in_
+    expected_features = scaler.feature_names_in_
 
-# Fill missing features with default values
-for feature in expected_features:
-    if feature not in input_dict:
-        input_dict[feature] = 0
+    for f in expected_features:
+        if f not in input_dict:
+            input_dict[f] = 0
 
-# Create DataFrame in correct order
-input_data = pd.DataFrame([input_dict])[expected_features]
+    input_data = pd.DataFrame([input_dict])[expected_features]
 
-scaled = scaler.transform(input_data)
+    scaled = scaler.transform(input_data)
 
-prediction = model.predict(scaled)
-prob = model.predict_proba(scaled)
+    prediction = model.predict(scaled)
+    prob = model.predict_proba(scaled)
 
-disease = label_encoder.inverse_transform(prediction)[0]
-confidence = np.max(prob) * 100
+    disease = label_encoder.inverse_transform(prediction)[0]
+    confidence = np.max(prob) * 100
 
     # ---------------- STATUS ----------------
     status = "🟢 STABLE"
@@ -181,87 +164,68 @@ confidence = np.max(prob) * 100
     </div>
     """, unsafe_allow_html=True)
 
-    # ---------------- EMAIL ALERT ----------------
+    # ---------------- EMAIL ----------------
     if email:
         if send_email(email, name, disease, status):
-            st.success("📧 Alert sent to doctor")
+            st.success("📧 Email sent")
         else:
-            st.error("Email failed. Check secrets.")
+            st.error("Email failed (check secrets)")
 
-    # ---------------- TABS ----------------
-    tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "🔍 Explainability", "💊 Treatment"])
+    # ---------------- DASHBOARD ----------------
+    st.subheader("📊 Prediction Breakdown")
 
-    # -------- DASHBOARD --------
-    with tab1:
-        st.markdown("<div class='section-title'>📊 Clinical Analytics</div>", unsafe_allow_html=True)
+    fig = px.bar(
+        pd.DataFrame({
+            "Condition": label_encoder.classes_,
+            "Probability": prob[0]*100
+        }),
+        x="Probability",
+        y="Condition",
+        orientation='h'
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
-        fig = px.bar(
-            pd.DataFrame({
-                "Condition": label_encoder.classes_,
-                "Probability": prob[0] * 100
-            }),
-            x="Probability",
-            y="Condition",
-            orientation='h',
-            color="Probability"
-        )
+    # ---------------- EXPLAINABILITY ----------------
+    st.subheader("🔍 Feature Importance")
 
-        fig.update_layout(
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
-            font=dict(color='white')
-        )
+    if hasattr(model, "feature_importances_"):
+        imp_df = pd.DataFrame({
+            "Feature": expected_features,
+            "Importance": model.feature_importances_
+        }).sort_values(by="Importance", ascending=False)
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.dataframe(imp_df)
+    else:
+        st.info("Model has no feature importance")
 
-    # -------- EXPLAINABILITY --------
-    with tab2:
-        st.subheader("🔍 Feature Importance")
+    # ---------------- MEDICINES ----------------
+    st.subheader("💊 Medicines")
 
-        if hasattr(model, "feature_importances_"):
-            importances = model.feature_importances_
+    if 'Reason' in med_db.columns:
+        meds = med_db[
+            med_db['Reason'].str.contains(disease, case=False, na=False)
+        ]
+    else:
+        meds = pd.DataFrame()
 
-            imp_df = pd.DataFrame({
-                "Feature": input_data.columns,
-                "Importance": importances
-            }).sort_values(by="Importance", ascending=False)
+    if not meds.empty:
+        for _, row in meds.head(10).iterrows():
+            st.markdown(f"""
+            <div class='med-card'>
+            <b>{row['Drug_Name']}</b><br>
+            {row['Reason']}<br>
+            <small>{row['Description']}</small>
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.warning("No medicines found")
 
-            st.dataframe(imp_df)
-
-            fig2 = px.bar(imp_df, x="Importance", y="Feature", orientation='h')
-            st.plotly_chart(fig2)
-        else:
-            st.info("Model does not support feature importance")
-
-    # -------- MEDICINE --------
-    with tab3:
-        st.markdown("<div class='section-title'>💊 Recommended Medicines</div>", unsafe_allow_html=True)
-
-        if 'Reason' in med_db.columns:
-            meds_found = med_db[
-                med_db['Reason'].str.contains(disease, case=False, na=False)
-            ]
-        else:
-            meds_found = pd.DataFrame()
-
-        if not meds_found.empty:
-            for _, row in meds_found.head(10).iterrows():
-                st.markdown(f"""
-                <div class='med-card'>
-                    <b>{row['Drug_Name']}</b><br>
-                    <i>{row['Reason']}</i><br>
-                    <small>{row['Description']}</small>
-                </div>
-                """, unsafe_allow_html=True)
-        else:
-            st.warning("No medicines found")
-
-    # -------- REPORT DOWNLOAD --------
-    report_html = generate_report(name, disease, round(confidence, 2), status)
+    # ---------------- REPORT ----------------
+    report = generate_report(name, disease, round(confidence,2), status)
 
     st.download_button(
         "📄 Download Report",
-        report_html,
-        file_name=f"{name}_report.html",
+        report,
+        file_name="report.html",
         mime="text/html"
     )
