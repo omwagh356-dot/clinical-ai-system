@@ -5,6 +5,7 @@ import plotly.express as px
 import joblib
 import smtplib
 from email.message import EmailMessage
+import os
 
 # ---------------- CONFIG ----------------
 st.set_page_config(page_title="Clinical AI System", layout="wide")
@@ -20,7 +21,7 @@ st.markdown("""
     padding: 20px;
     border-radius: 12px;
     text-align: center;
-    font-size: 24px;
+    font-size: 26px;
     font-weight: bold;
 }
 .med-card {
@@ -32,20 +33,29 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------- LOAD FILES ----------------
+# ---------------- LOAD MODEL FILES ----------------
+required_files = ["model.pkl", "scaler.pkl", "label_encoder.pkl", "features.pkl"]
+
+for f in required_files:
+    if not os.path.exists(f):
+        st.error(f"❌ Missing file: {f}")
+        st.stop()
+
 model = joblib.load("model.pkl")
 scaler = joblib.load("scaler.pkl")
 label_encoder = joblib.load("label_encoder.pkl")
 features = joblib.load("features.pkl")
 
-# ---------------- LOAD MEDS ----------------
+# ---------------- LOAD MEDICINE DATA ----------------
 @st.cache_data
 def load_meds():
     try:
         df = pd.read_excel("Medicine_description.xlsx")
         df.columns = [c.strip() for c in df.columns]
+
         if 'res' in df.columns:
             df = df.rename(columns={'res': 'Reason'})
+
         return df
     except:
         return pd.DataFrame(columns=["Drug_Name","Reason","Description"])
@@ -63,14 +73,14 @@ def encode_symptoms(text, feature_list):
 
         words = f.replace("_"," ").split()
 
-        if any(w in text for w in words):
+        if any(word in text for word in words):
             vector.append(1)
         else:
             vector.append(0)
 
     return vector
 
-# ---------------- EMAIL ----------------
+# ---------------- EMAIL FUNCTION ----------------
 def send_email(receiver, name, disease, status):
     try:
         msg = EmailMessage()
@@ -80,7 +90,7 @@ def send_email(receiver, name, disease, status):
 
         msg.set_content(f"""
 Patient: {name}
-Disease: {disease}
+Diagnosis: {disease}
 Status: {status}
 """)
 
@@ -108,6 +118,7 @@ def generate_report(name, disease, prob, status):
 
 # ---------------- UI ----------------
 st.title("🛡️ AI Clinical Decision Support System")
+st.caption("ML + Clinical Logic + Dashboard + Alerts")
 
 col1, col2 = st.columns(2)
 
@@ -125,44 +136,41 @@ with col2:
 
 symptoms = st.text_area("Symptoms (e.g. fever, cough, rash)")
 
-# ---------------- RUN ----------------
+# ---------------- RUN MODEL ----------------
 if st.button("🚀 Run Diagnosis"):
 
-    # ---- ML INPUT ----
+    # --- Encode symptoms ---
     symptom_vector = encode_symptoms(symptoms, features)
+
+    # --- Add vitals ---
     vitals = [age, hr, bp, spo2, temp, gluc]
 
+    # --- Final input ---
     input_data = symptom_vector + vitals
     input_df = pd.DataFrame([input_data], columns=features)
 
+    # --- Scale ---
     scaled = scaler.transform(input_df)
 
+    # --- Predict ---
     prediction = model.predict(scaled)
     prob = model.predict_proba(scaled)
 
     disease = label_encoder.inverse_transform(prediction)[0]
     confidence = np.max(prob) * 100
 
-    # ---------------- CLINICAL OVERRIDE ----------------
+    # ---------------- SMART CLINICAL LOGIC ----------------
     symptom_text = symptoms.lower()
 
-    if temp >= 38:
-        disease = "Fever"
-
-    if spo2 < 92:
-        disease = "Respiratory Issue"
-
-    if gluc > 200:
-        disease = "Diabetes"
-
-    if "fever" in symptom_text:
-        disease = "Fever"
-
-    if "cough" in symptom_text:
-        disease = "Respiratory Infection"
-
-    if "rash" in symptom_text:
-        disease = "Allergy"
+    if confidence < 60:
+        if temp >= 38:
+            disease = "Fever"
+        elif spo2 < 92:
+            disease = "Respiratory"
+        elif gluc > 200:
+            disease = "Diabetes"
+        elif "rash" in symptom_text:
+            disease = "Allergy"
 
     # ---------------- STATUS ----------------
     status = "🟢 STABLE"
@@ -171,7 +179,7 @@ if st.button("🚀 Run Diagnosis"):
 
     color = "#28a745" if "STABLE" in status else "#ff4b4b"
 
-    # ---------------- OUTPUT ----------------
+    # ---------------- RESULT ----------------
     st.markdown(f"""
     <div class='status-box' style='background:{color};'>
         {status} : {disease} ({round(confidence,2)}%)
@@ -179,14 +187,14 @@ if st.button("🚀 Run Diagnosis"):
     """, unsafe_allow_html=True)
 
     if confidence < 50:
-        st.warning("⚠️ Low confidence prediction. Clinical rules applied.")
+        st.warning("⚠️ Low confidence → clinical rules applied")
 
     # ---------------- EMAIL ----------------
     if email:
         if send_email(email, name, disease, status):
             st.success("📧 Alert sent to doctor")
         else:
-            st.error("Email failed")
+            st.error("Email failed. Check secrets.")
 
     # ---------------- DASHBOARD ----------------
     st.subheader("📊 Prediction Probabilities")
@@ -198,8 +206,16 @@ if st.button("🚀 Run Diagnosis"):
         }),
         x="Probability",
         y="Disease",
-        orientation='h'
+        orientation='h',
+        color="Probability"
     )
+
+    fig.update_layout(
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='white')
+    )
+
     st.plotly_chart(fig, use_container_width=True)
 
     # ---------------- MEDICINES ----------------
@@ -224,7 +240,7 @@ if st.button("🚀 Run Diagnosis"):
     else:
         st.warning("No medicines found")
 
-    # ---------------- REPORT ----------------
+    # ---------------- REPORT DOWNLOAD ----------------
     report = generate_report(name, disease, round(confidence,2), status)
 
     st.download_button(
