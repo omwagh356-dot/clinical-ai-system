@@ -159,13 +159,13 @@ for feature in expected_features:
 # Create DataFrame in correct order
 input_data = pd.DataFrame([input_dict])[expected_features]
 
-    scaled = scaler.transform(input_data)
+scaled = scaler.transform(input_data)
 
-    prediction = model.predict(scaled)
-    prob = model.predict_proba(scaled)
+prediction = model.predict(scaled)
+prob = model.predict_proba(scaled)
 
-    disease = label_encoder.inverse_transform(prediction)[0]
-    confidence = np.max(prob) * 100
+disease = label_encoder.inverse_transform(prediction)[0]
+confidence = np.max(prob) * 100
 
     # ---------------- STATUS ----------------
     status = "🟢 STABLE"
