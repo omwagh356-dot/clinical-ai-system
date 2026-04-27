@@ -157,6 +157,13 @@ if st.button("🚀 Run Diagnosis"):
 
     color = "#28a745" if "STABLE" in status else "#ff4b4b"
 
+ # ---------------- STATUS ----------------
+    status = "🟢 STABLE"
+    if temp > 39 or spo2 < 90:
+        status = "🔴 CRITICAL"
+
+    color = "#28a745" if "STABLE" in status else "#ff4b4b"
+
     # ---------------- RESULT ----------------
     st.markdown(f"""
     <div class='status-box' style='background:{color};'>
@@ -164,68 +171,87 @@ if st.button("🚀 Run Diagnosis"):
     </div>
     """, unsafe_allow_html=True)
 
-    # ---------------- EMAIL ----------------
+    # ---------------- EMAIL ALERT ----------------
     if email:
         if send_email(email, name, disease, status):
-            st.success("📧 Email sent")
+            st.success("📧 Alert sent to doctor")
         else:
-            st.error("Email failed (check secrets)")
+            st.error("Email failed. Check secrets.")
 
-    # ---------------- DASHBOARD ----------------
-    st.subheader("📊 Prediction Breakdown")
+    # ---------------- TABS ----------------
+    tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "🔍 Explainability", "💊 Treatment"])
 
-    fig = px.bar(
-        pd.DataFrame({
-            "Condition": label_encoder.classes_,
-            "Probability": prob[0]*100
-        }),
-        x="Probability",
-        y="Condition",
-        orientation='h'
-    )
-    st.plotly_chart(fig, use_container_width=True)
+    # -------- DASHBOARD --------
+    with tab1:
+        st.markdown("<div class='section-title'>📊 Clinical Analytics</div>", unsafe_allow_html=True)
 
-    # ---------------- EXPLAINABILITY ----------------
-    st.subheader("🔍 Feature Importance")
+        fig = px.bar(
+            pd.DataFrame({
+                "Condition": label_encoder.classes_,
+                "Probability": prob[0] * 100
+            }),
+            x="Probability",
+            y="Condition",
+            orientation='h',
+            color="Probability"
+        )
 
-    if hasattr(model, "feature_importances_"):
-        imp_df = pd.DataFrame({
-            "Feature": expected_features,
-            "Importance": model.feature_importances_
-        }).sort_values(by="Importance", ascending=False)
+        fig.update_layout(
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            font=dict(color='white')
+        )
 
-        st.dataframe(imp_df)
-    else:
-        st.info("Model has no feature importance")
+        st.plotly_chart(fig, use_container_width=True)
 
-    # ---------------- MEDICINES ----------------
-    st.subheader("💊 Medicines")
+    # -------- EXPLAINABILITY --------
+    with tab2:
+        st.subheader("🔍 Feature Importance")
 
-    if 'Reason' in med_db.columns:
-        meds = med_db[
-            med_db['Reason'].str.contains(disease, case=False, na=False)
-        ]
-    else:
-        meds = pd.DataFrame()
+        if hasattr(model, "feature_importances_"):
+            importances = model.feature_importances_
 
-    if not meds.empty:
-        for _, row in meds.head(10).iterrows():
-            st.markdown(f"""
-            <div class='med-card'>
-            <b>{row['Drug_Name']}</b><br>
-            {row['Reason']}<br>
-            <small>{row['Description']}</small>
-            </div>
-            """, unsafe_allow_html=True)
-    else:
-        st.warning("No medicines found")
+            imp_df = pd.DataFrame({
+                "Feature": input_data.columns,
+                "Importance": importances
+            }).sort_values(by="Importance", ascending=False)
 
-    # ---------------- REPORT ----------------
-    report = generate_report(name, disease, round(confidence,2), status)
+            st.dataframe(imp_df)
+
+            fig2 = px.bar(imp_df, x="Importance", y="Feature", orientation='h')
+            st.plotly_chart(fig2)
+        else:
+            st.info("Model does not support feature importance")
+
+    # -------- MEDICINE --------
+    with tab3:
+        st.markdown("<div class='section-title'>💊 Recommended Medicines</div>", unsafe_allow_html=True)
+
+        if 'Reason' in med_db.columns:
+            meds_found = med_db[
+                med_db['Reason'].str.contains(disease, case=False, na=False)
+            ]
+        else:
+            meds_found = pd.DataFrame()
+
+        if not meds_found.empty:
+            for _, row in meds_found.head(10).iterrows():
+                st.markdown(f"""
+                <div class='med-card'>
+                    <b>{row['Drug_Name']}</b><br>
+                    <i>{row['Reason']}</i><br>
+                    <small>{row['Description']}</small>
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.warning("No medicines found")
+
+    # -------- REPORT DOWNLOAD --------
+    report_html = generate_report(name, disease, round(confidence, 2), status)
 
     st.download_button(
         "📄 Download Report",
-        report,
-        file_name="report.html",
+        report_html,
+        file_name=f"{name}_report.html",
         mime="text/html"
     )
