@@ -6,7 +6,7 @@ import joblib
 import smtplib
 from email.message import EmailMessage
 import os
-
+import shap
 # =========================================================
 # PAGE CONFIG
 # =========================================================
