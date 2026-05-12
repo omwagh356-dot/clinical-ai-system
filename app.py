@@ -2,14 +2,13 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-import plotly.graph_objects as go
 import joblib
 import smtplib
 from email.message import EmailMessage
 import os
 
 # =========================================================
-# CONFIG
+# PAGE CONFIG
 # =========================================================
 st.set_page_config(
     page_title="Clinical AI Decision Support System",
@@ -62,7 +61,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =========================================================
-# CHECK FILES
+# REQUIRED FILES
 # =========================================================
 required_files = [
     "model.pkl",
@@ -72,6 +71,7 @@ required_files = [
 ]
 
 for file in required_files:
+
     if not os.path.exists(file):
         st.error(f"❌ Missing file: {file}")
         st.stop()
@@ -80,8 +80,11 @@ for file in required_files:
 # LOAD FILES
 # =========================================================
 model = joblib.load("model.pkl")
+
 scaler = joblib.load("scaler.pkl")
+
 label_encoder = joblib.load("label_encoder.pkl")
+
 features = joblib.load("features.pkl")
 
 # =========================================================
@@ -89,21 +92,35 @@ features = joblib.load("features.pkl")
 # =========================================================
 @st.cache_data
 def load_medicine_db():
-    try:
-        df = pd.read_excel("Medicine_description.xlsx")
 
-        df.columns = [c.strip() for c in df.columns]
+    try:
+
+        df = pd.read_excel(
+            "Medicine_description.xlsx"
+        )
+
+        df.columns = [
+            c.strip()
+            for c in df.columns
+        ]
 
         if "res" in df.columns:
-            df = df.rename(columns={"res": "Reason"})
+            df = df.rename(
+                columns={"res": "Reason"}
+            )
 
         df["Reason"] = df["Reason"].astype(str)
 
         return df
 
     except:
+
         return pd.DataFrame(
-            columns=["Drug_Name", "Reason", "Description"]
+            columns=[
+                "Drug_Name",
+                "Reason",
+                "Description"
+            ]
         )
 
 med_db = load_medicine_db()
@@ -117,29 +134,39 @@ def encode_symptoms(text, feature_list):
 
     vector = []
 
+    vital_features = [
+        "age",
+        "hr",
+        "bp",
+        "spo2",
+        "temp",
+        "glucose"
+    ]
+
     for feature in feature_list:
 
-        if feature in [
-            "age",
-            "hr",
-            "bp",
-            "spo2",
-            "temp",
-            "glucose"
-        ]:
+        if feature in vital_features:
             continue
 
-        words = feature.replace("_", " ").split()
+        feature_words = (
+            feature
+            .replace("_", " ")
+            .split()
+        )
 
-        if any(word in text for word in words):
+        if any(
+            word in text
+            for word in feature_words
+        ):
             vector.append(1)
+
         else:
             vector.append(0)
 
     return vector
 
 # =========================================================
-# EMAIL ALERT
+# SEND EMAIL
 # =========================================================
 def send_email(receiver, name, disease, status):
 
@@ -147,14 +174,18 @@ def send_email(receiver, name, disease, status):
 
         msg = EmailMessage()
 
-        msg["Subject"] = f"🚨 Clinical Alert - {status}"
+        msg["Subject"] = (
+            f"🚨 Clinical Alert - {status}"
+        )
+
         msg["From"] = st.secrets["EMAIL_USER"]
+
         msg["To"] = receiver
 
         msg.set_content(f"""
 Patient Name : {name}
 
-Diagnosis : {disease}
+Disease : {disease}
 
 Status : {status}
         """)
@@ -183,13 +214,14 @@ def generate_report(
     name,
     disease,
     confidence,
-    status,
     severity,
-    risk
+    risk,
+    status
 ):
 
     return f"""
     <html>
+
     <body>
 
     <h1>Clinical AI Report</h1>
@@ -200,19 +232,20 @@ def generate_report(
 
     <p><b>Name:</b> {name}</p>
 
-    <h2>Diagnosis</h2>
+    <h2>Prediction</h2>
 
     <p><b>Disease:</b> {disease}</p>
 
     <p><b>Confidence:</b> {confidence}%</p>
 
-    <p><b>Status:</b> {status}</p>
-
     <p><b>Severity:</b> {severity}</p>
 
     <p><b>Risk Score:</b> {risk}</p>
 
+    <p><b>Status:</b> {status}</p>
+
     </body>
+
     </html>
     """
 
@@ -220,12 +253,16 @@ def generate_report(
 # HEADER
 # =========================================================
 st.markdown(
-    "<div class='main-title'>🛡️ Clinical AI Decision Support System</div>",
+    """
+    <div class='main-title'>
+    🛡️ Clinical AI Decision Support System
+    </div>
+    """,
     unsafe_allow_html=True
 )
 
 st.caption(
-    "Research-Level Explainable Clinical Intelligence System"
+    "Research-Level Explainable Clinical Intelligence"
 )
 
 st.caption(
@@ -233,13 +270,15 @@ st.caption(
 )
 
 # =========================================================
-# INPUT UI
+# INPUTS
 # =========================================================
 col1, col2 = st.columns(2)
 
 with col1:
 
-    name = st.text_input("Patient Name")
+    name = st.text_input(
+        "Patient Name"
+    )
 
     age = st.number_input(
         "Age",
@@ -280,7 +319,7 @@ with col2:
     )
 
 symptoms = st.text_area(
-    "Symptoms (example: fever, cough, headache, rash)"
+    "Symptoms (Example: fever, cough, rash)"
 )
 
 # =========================================================
@@ -291,13 +330,16 @@ if st.button("🚀 Run Diagnosis"):
     symptom_text = symptoms.lower()
 
     # =====================================================
-    # FEATURE ENGINEERING
+    # ENCODE SYMPTOMS
     # =====================================================
     symptom_vector = encode_symptoms(
         symptoms,
         features
     )
 
+    # =====================================================
+    # VITALS
+    # =====================================================
     vitals = [
         age,
         hr,
@@ -307,15 +349,54 @@ if st.button("🚀 Run Diagnosis"):
         gluc
     ]
 
+    # =====================================================
+    # FINAL INPUT VECTOR
+    # =====================================================
     input_data = symptom_vector + vitals
 
+    # =====================================================
+    # CREATE INPUT DATAFRAME
+    # =====================================================
     input_df = pd.DataFrame(
         [input_data],
         columns=features
     )
 
     # =====================================================
-    # SCALE DATA
+    # FIX FEATURE ALIGNMENT
+    # =====================================================
+    expected_features = (
+        scaler.feature_names_in_
+    )
+
+    # ADD MISSING FEATURES
+    for col in expected_features:
+
+        if col not in input_df.columns:
+            input_df[col] = 0
+
+    # REMOVE EXTRA FEATURES
+    input_df = input_df[
+        expected_features
+    ]
+
+    # =====================================================
+    # DEBUG INFO
+    # =====================================================
+    with st.expander("🔬 Feature Debugging"):
+
+        st.write(
+            "Input Features:",
+            input_df.columns.tolist()
+        )
+
+        st.write(
+            "Scaler Features:",
+            expected_features.tolist()
+        )
+
+    # =====================================================
+    # SCALE
     # =====================================================
     scaled = scaler.transform(input_df)
 
@@ -326,39 +407,72 @@ if st.button("🚀 Run Diagnosis"):
 
     pred_index = np.argmax(prob[0])
 
-    disease = label_encoder.inverse_transform(
-        [pred_index]
-    )[0]
+    disease = (
+        label_encoder.inverse_transform(
+            [pred_index]
+        )[0]
+    )
 
     confidence = float(
         prob[0][pred_index] * 100
     )
 
-
     # =====================================================
-    # CLINICAL OVERRIDE SYSTEM
+    # CLINICAL OVERRIDE
     # =====================================================
     override_reason = None
 
     if gluc > 200:
+
         disease = "Diabetes"
-        confidence = max(confidence, 95)
-        override_reason = "High glucose detected"
+
+        confidence = max(
+            confidence,
+            95
+        )
+
+        override_reason = (
+            "High glucose detected"
+        )
 
     elif temp >= 39:
+
         disease = "Fever"
-        confidence = max(confidence, 90)
-        override_reason = "High body temperature"
+
+        confidence = max(
+            confidence,
+            90
+        )
+
+        override_reason = (
+            "Very high temperature"
+        )
 
     elif spo2 < 90:
+
         disease = "Respiratory Disease"
-        confidence = max(confidence, 92)
-        override_reason = "Low oxygen saturation"
+
+        confidence = max(
+            confidence,
+            92
+        )
+
+        override_reason = (
+            "Low oxygen saturation"
+        )
 
     elif "rash" in symptom_text:
+
         disease = "Allergy"
-        confidence = max(confidence, 85)
-        override_reason = "Skin rash detected"
+
+        confidence = max(
+            confidence,
+            85
+        )
+
+        override_reason = (
+            "Rash symptom detected"
+        )
 
     # =====================================================
     # RISK SCORE
@@ -390,20 +504,21 @@ if st.button("🚀 Run Diagnosis"):
     if severity == "Severe":
         status = "🔴 CRITICAL"
 
-    status_color = (
+    # =====================================================
+    # RESULT DISPLAY
+    # =====================================================
+    color = (
         "#28a745"
         if "STABLE" in status
         else "#ff4b4b"
     )
 
-    # =====================================================
-    # DISPLAY RESULT
-    # =====================================================
     st.markdown(f"""
     <div class='status-box'
-    style='background:{status_color};'>
+    style='background:{color};'>
 
-    {status} : {disease} ({round(confidence,2)}%)
+    {status} : {disease}
+    ({round(confidence,2)}%)
 
     </div>
     """, unsafe_allow_html=True)
@@ -411,30 +526,31 @@ if st.button("🚀 Run Diagnosis"):
     # =====================================================
     # METRICS
     # =====================================================
-    m1, m2, m3 = st.columns(3)
+    c1, c2, c3 = st.columns(3)
 
-    with m1:
+    with c1:
         st.metric(
             "⚠️ Risk Score",
             risk
         )
 
-    with m2:
+    with c2:
         st.metric(
             "🔥 Severity",
             severity
         )
 
-    with m3:
+    with c3:
         st.metric(
             "🧠 Confidence",
             f"{round(confidence,2)}%"
         )
 
     # =====================================================
-    # SEND EMAIL
+    # EMAIL
     # =====================================================
     if email:
+
         send_email(
             email,
             name,
@@ -460,18 +576,14 @@ if st.button("🚀 Run Diagnosis"):
             "Disease Probability Distribution"
         )
 
-        # =============================================
-        # IMPORTANT FIXED PROBABILITY MAPPING
-        # =============================================
-        decoded_labels = label_encoder.inverse_transform(
-            model.classes_
-        )
-
         prob_df = pd.DataFrame({
-            "Disease": label_encoder.classes_,
-            "Probability": prob[0] * 100
-        })
 
+            "Disease":
+            label_encoder.classes_,
+
+            "Probability":
+            prob[0] * 100
+        })
 
         prob_df = prob_df.sort_values(
             by="Probability",
@@ -484,7 +596,7 @@ if st.button("🚀 Run Diagnosis"):
             y="Disease",
             orientation='h',
             text="Probability",
-            title="AI Disease Prediction Analysis"
+            title="AI Disease Analysis"
         )
 
         fig.update_traces(
@@ -501,51 +613,13 @@ if st.button("🚀 Run Diagnosis"):
             use_container_width=True
         )
 
-        # =============================================
-        # DEBUG INFO
-        # =============================================
-        with st.expander("🔬 Research Debug Information"):
-
-            st.write(
-                "Model Classes:",
-                model.classes_
-            )
-
-            st.write(
-                "Encoder Classes:",
-                label_encoder.classes_
-            )
-
-            st.write(
-                "Raw Probabilities:",
-                prob[0]
-            )
-
-            st.write(
-                "Final Prediction:",
-                disease
-            )
-
-        with st.expander("Model Metadata"):
-
-            st.write(
-                "Model Classes:",
-            model.classes_
-            )
-
-            st.write(
-                "Encoder Classes:",
-            label_encoder.classes_
-            )
-
-
     # =====================================================
     # EXPLAINABILITY
     # =====================================================
     with tab2:
 
         st.subheader(
-            "Explainable AI Feature Importance"
+            "Model Explainability"
         )
 
         if hasattr(
@@ -554,13 +628,20 @@ if st.button("🚀 Run Diagnosis"):
         ):
 
             importance_df = pd.DataFrame({
-                "Feature": input_df.columns,
-                "Importance": model.feature_importances_
+
+                "Feature":
+                input_df.columns,
+
+                "Importance":
+                model.feature_importances_
             })
 
-            importance_df = importance_df.sort_values(
-                by="Importance",
-                ascending=False
+            importance_df = (
+                importance_df
+                .sort_values(
+                    by="Importance",
+                    ascending=False
+                )
             )
 
             st.dataframe(
@@ -584,9 +665,6 @@ if st.button("🚀 Run Diagnosis"):
                 use_container_width=True
             )
 
-        # =============================================
-        # CLINICAL REASONING
-        # =============================================
         st.subheader(
             "Clinical Reasoning"
         )
@@ -595,12 +673,12 @@ if st.button("🚀 Run Diagnosis"):
 
         if gluc > 200:
             reasons.append(
-                "High glucose strongly indicates diabetes"
+                "High glucose indicates diabetes risk"
             )
 
         if temp > 38:
             reasons.append(
-                "Elevated temperature indicates infection"
+                "High temperature suggests infection"
             )
 
         if spo2 < 92:
@@ -610,12 +688,12 @@ if st.button("🚀 Run Diagnosis"):
 
         if "rash" in symptom_text:
             reasons.append(
-                "Rash pattern supports allergy"
+                "Rash indicates allergy"
             )
 
         if override_reason:
             reasons.append(
-                f"Clinical Override Applied: {override_reason}"
+                f"Clinical Override: {override_reason}"
             )
 
         for reason in reasons:
@@ -630,20 +708,31 @@ if st.button("🚀 Run Diagnosis"):
             "💊 Recommended Medicines"
         )
 
-        search_terms = [disease.lower()]
+        search_terms = [
+            disease.lower()
+        ]
 
         if "fever" in symptom_text:
-            search_terms.append("fever")
+            search_terms.append(
+                "fever"
+            )
 
         if "cough" in symptom_text:
-            search_terms.append("cold")
+            search_terms.append(
+                "cold"
+            )
 
-        query = "|".join(search_terms)
+        query = "|".join(
+            search_terms
+        )
 
         meds = med_db[
             med_db["Reason"]
             .str.lower()
-            .str.contains(query, na=False)
+            .str.contains(
+                query,
+                na=False
+            )
         ]
 
         if meds.empty:
@@ -658,7 +747,9 @@ if st.button("🚀 Run Diagnosis"):
 
             <i>{row['Reason']}</i><br><br>
 
-            <small>{row['Description']}</small>
+            <small>
+            {row['Description']}
+            </small>
 
             </div>
             """, unsafe_allow_html=True)
@@ -670,14 +761,14 @@ if st.button("🚀 Run Diagnosis"):
         name,
         disease,
         round(confidence, 2),
-        status,
         severity,
-        risk
+        risk,
+        status
     )
 
     st.download_button(
         "📄 Download Clinical Report",
         report,
-        file_name=f"{name}_clinical_report.html",
+        file_name=f"{name}_report.html",
         mime="text/html"
     )
