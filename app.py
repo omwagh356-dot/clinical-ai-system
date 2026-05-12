@@ -792,100 +792,290 @@ Immediate medical attention recommended.
         st.plotly_chart(gauge)
 
     # =====================================================
-    # EXPLAINABILITY
-    # =====================================================
+# =====================================================
+# EXPLAINABILITY TAB
+# =====================================================
 
-    with tab2:
+with tab2:
 
-        st.subheader(
-            "Clinical Reasoning"
+    st.title("🔍 Explainable AI Analysis")
+
+    # =================================================
+    # CLINICAL REASONING
+    # =================================================
+
+    st.subheader("🏥 Clinical Reasoning")
+
+    reasons = []
+
+    # -----------------------------------------------
+    # CARDIAC
+    # -----------------------------------------------
+
+    if hr >= 145:
+
+        reasons.append(
+            "Extreme tachycardia detected "
+            "(HR above 145)"
         )
 
-        reasons = []
+    if "chest pain" in symptom_text:
 
-        if hr >= 145:
-            reasons.append(
-                "Extreme tachycardia detected"
-            )
+        reasons.append(
+            "Chest pain indicates "
+            "possible cardiac risk"
+        )
 
-        if "chest pain" in symptom_text:
-            reasons.append(
-                "Chest pain indicates cardiac risk"
-            )
+    # -----------------------------------------------
+    # DIABETES
+    # -----------------------------------------------
 
-        if gluc > 200:
-            reasons.append(
-                "High glucose indicates diabetes risk"
-            )
+    if gluc > 200:
 
-        if temp > 38:
-            reasons.append(
-                "High temperature suggests infection"
-            )
+        reasons.append(
+            "High glucose indicates "
+            "diabetes risk"
+        )
 
-        if spo2 < 92:
-            reasons.append(
-                "Low oxygen saturation detected"
-            )
+    # -----------------------------------------------
+    # FEVER
+    # -----------------------------------------------
 
-        if override_reason:
-            reasons.append(
-                f"Override Applied: {override_reason}"
-            )
+    if temp > 38:
+
+        reasons.append(
+            "High temperature suggests "
+            "infection or fever"
+        )
+
+    # -----------------------------------------------
+    # RESPIRATORY
+    # -----------------------------------------------
+
+    if spo2 < 92:
+
+        reasons.append(
+            "Low oxygen saturation detected"
+        )
+
+    # -----------------------------------------------
+    # OVERRIDE
+    # -----------------------------------------------
+
+    if override_reason:
+
+        reasons.append(
+            f"Clinical Override Applied: "
+            f"{override_reason}"
+        )
+
+    # -----------------------------------------------
+    # DISPLAY REASONS
+    # -----------------------------------------------
+
+    if len(reasons) > 0:
 
         for reason in reasons:
+
             st.success(reason)
 
-        # =================================================
-        # SHAP EXPLAINABILITY
-        # =================================================
+    else:
 
-        # =================================================
-# SHAP EXPLAINABILITY
-# =================================================
+        st.info(
+            "No major abnormal findings detected."
+        )
+
+    # =================================================
+    # SHAP EXPLAINABILITY
+    # =================================================
 
     st.subheader("🧠 SHAP Explainable AI")
 
     try:
 
-        if explainer:
+        if explainer is not None:
 
-        # --------------------------------------------
-        # GET SHAP VALUES
-        # --------------------------------------------
+            # ----------------------------------------
+            # CALCULATE SHAP VALUES
+            # ----------------------------------------
 
-            shap_values = explainer.shap_values(input_df)
+            shap_values = explainer.shap_values(
+                input_df
+            )
 
-        # --------------------------------------------
-        # HANDLE MULTI-CLASS MODELS
-        # --------------------------------------------
+            # ----------------------------------------
+            # HANDLE MULTICLASS MODELS
+            # ----------------------------------------
 
             if isinstance(shap_values, list):
 
-                shap_single = shap_values[pred_index][0]
+                shap_single = (
+                    shap_values[pred_index][0]
+                )
 
             else:
 
                 shap_single = shap_values[0]
 
-        # --------------------------------------------
-        # CREATE SHAP DATAFRAME
-        # --------------------------------------------
+            # ----------------------------------------
+            # CONVERT TO 1D
+            # ----------------------------------------
+
+            shap_single = np.array(
+                shap_single
+            ).flatten()
+
+            # ----------------------------------------
+            # FIX SHAPE MISMATCH
+            # ----------------------------------------
+
+            feature_count = len(
+                input_df.columns
+            )
+
+            shap_count = len(
+                shap_single
+            )
+
+            min_len = min(
+                feature_count,
+                shap_count
+            )
+
+            features_used = (
+                input_df.columns[:min_len]
+            )
+
+            shap_used = (
+                shap_single[:min_len]
+            )
+
+            # ----------------------------------------
+            # CREATE DATAFRAME
+            # ----------------------------------------
 
             shap_df = pd.DataFrame({
 
-                "Feature": input_df.columns,
+                "Feature":
+                features_used,
 
-                "Impact": np.abs(shap_single)
+                "Impact":
+                np.abs(shap_used)
 
             })
 
+            # ----------------------------------------
+            # SORT FEATURES
+            # ----------------------------------------
+
             shap_df = shap_df.sort_values(
-                    by="Impact",
-                    ascending=False
+
+                by="Impact",
+
+                ascending=False
+
             )
 
-        # --------------------------------------------
+            # ----------------------------------------
+            # TOP FEATURES
+            # ----------------------------------------
+
+            top_shap = shap_df.head(10)
+
+            # ----------------------------------------
+            # SHOW TABLE
+            # ----------------------------------------
+
+            st.subheader(
+                "Top Influential Features"
+            )
+
+            st.dataframe(
+                top_shap,
+                use_container_width=True
+            )
+
+            # ----------------------------------------
+            # BAR CHART
+            # ----------------------------------------
+
+            fig_shap = px.bar(
+
+                top_shap,
+
+                x="Impact",
+
+                y="Feature",
+
+                orientation="h",
+
+                text="Impact",
+
+                title=(
+                    "SHAP Feature Impact Analysis"
+                )
+
+            )
+
+            fig_shap.update_layout(
+
+                template="plotly_dark",
+
+                height=500
+
+            )
+
+            st.plotly_chart(
+
+                fig_shap,
+
+                use_container_width=True
+
+            )
+
+            # ----------------------------------------
+            # AI INTERPRETATION
+            # ----------------------------------------
+
+            st.subheader(
+                "🧠 AI Interpretation"
+            )
+
+            top_feature = (
+                top_shap.iloc[0]["Feature"]
+            )
+
+            top_value = round(
+                top_shap.iloc[0]["Impact"],
+                3
+            )
+
+            st.info(f"""
+
+Most influential feature:
+{top_feature}
+
+Impact Score:
+{top_value}
+
+This feature had the highest
+contribution toward the model's
+prediction.
+
+            """)
+
+        else:
+
+            st.warning(
+                "SHAP explainer unavailable."
+            )
+
+    except Exception as e:
+
+        st.error(
+            f"SHAP Error: {e}"
+        )
+
         # SHOW TABLE
         # --------------------------------------------
 
