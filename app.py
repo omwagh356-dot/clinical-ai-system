@@ -723,17 +723,26 @@ if st.button("🚀 Run Diagnosis"):
     <div class='status-box'
     style='background:{color};'>
 
-    🧠 ML Prediction :
+    <h2>🧠 AI Clinical Decision</h2>
+
+    <hr>
+
+    <h3>
+    ML Model Prediction :
     {ml_prediction}
     ({round(confidence,2)}%)
+    </h3>
 
-    <br><br>
+    <br>
 
-    🏥 Clinical Assessment :
+    <h2>
+    🏥 Final Clinical Assessment :
     {clinical_prediction}
+    </h2>
 
     </div>
     """, unsafe_allow_html=True)
+
 
     # =====================================================
     # METRICS
