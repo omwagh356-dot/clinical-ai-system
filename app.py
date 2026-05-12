@@ -1,4 +1,3 @@
-# Full Research-Level Clinical AI System (app.py)
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -6,17 +5,17 @@ import plotly.express as px
 import plotly.graph_objects as go
 import joblib
 import shap
-import matplotlib.pyplot as plt
 import smtplib
-from email.message import EmailMessage
 import os
+
+from email.message import EmailMessage
 
 # =========================================================
 # PAGE CONFIG
 # =========================================================
 
 st.set_page_config(
-    page_title="Intelligent Clinical Decision Support System",
+    page_title="Clinical AI System",
     layout="wide"
 )
 
@@ -82,8 +81,11 @@ for file in required_files:
 # =========================================================
 
 model = joblib.load("model.pkl")
+
 scaler = joblib.load("scaler.pkl")
+
 label_encoder = joblib.load("label_encoder.pkl")
+
 features = joblib.load("features.pkl")
 
 # =========================================================
@@ -91,8 +93,11 @@ features = joblib.load("features.pkl")
 # =========================================================
 
 try:
+
     explainer = shap.TreeExplainer(model)
+
 except:
+
     explainer = None
 
 # =========================================================
@@ -100,7 +105,6 @@ except:
 # =========================================================
 
 @st.cache_data
-
 def load_medicine_db():
 
     try:
@@ -142,9 +146,8 @@ def load_medicine_db():
 med_db = load_medicine_db()
 
 # =========================================================
-# ADVANCED NLP ENGINE
+# NLP SYMPTOM ENGINE
 # =========================================================
-
 
 def encode_symptoms(text, feature_list):
 
@@ -152,54 +155,51 @@ def encode_symptoms(text, feature_list):
 
     symptom_map = {
 
-        "fever": [
+        "fever":[
             "fever",
             "high fever",
-            "body hot",
             "temperature"
         ],
 
-        "cough": [
+        "cough":[
             "cough",
             "coughing"
         ],
 
-        "headache": [
+        "headache":[
             "headache",
-            "migraine",
-            "head pain"
+            "migraine"
         ],
 
-        "chest_pain": [
+        "chest_pain":[
             "chest pain",
             "tight chest",
             "heart pain"
         ],
 
-        "shortness_of_breath": [
+        "shortness_of_breath":[
             "difficulty breathing",
             "breathing problem",
             "shortness of breath"
         ],
 
-        "rash": [
+        "rash":[
             "rash",
-            "skin rash",
-            "allergy"
+            "skin allergy"
         ],
 
-        "fatigue": [
+        "fatigue":[
             "fatigue",
             "weakness",
             "tired"
         ],
 
-        "vomiting": [
+        "vomiting":[
             "vomiting",
             "nausea"
         ],
 
-        "dizziness": [
+        "dizziness":[
             "dizziness",
             "dizzy"
         ]
@@ -219,6 +219,7 @@ def encode_symptoms(text, feature_list):
     for feature in feature_list:
 
         if feature in vital_features:
+
             continue
 
         found = 0
@@ -240,6 +241,7 @@ def encode_symptoms(text, feature_list):
             )
 
             if clean_feature in text:
+
                 found = 1
 
         vector.append(found)
@@ -249,7 +251,6 @@ def encode_symptoms(text, feature_list):
 # =========================================================
 # EMAIL FUNCTION
 # =========================================================
-
 
 def send_email(receiver, patient_name, disease, status):
 
@@ -297,7 +298,6 @@ Status : {status}
 # REPORT FUNCTION
 # =========================================================
 
-
 def generate_report(
     name,
     ml_prediction,
@@ -318,11 +318,7 @@ def generate_report(
 
     <hr>
 
-    <h2>Patient Information</h2>
-
-    <p><b>Name:</b> {name}</p>
-
-    <h2>Prediction</h2>
+    <p><b>Patient:</b> {name}</p>
 
     <p><b>ML Prediction:</b>
     {ml_prediction}</p>
@@ -339,10 +335,10 @@ def generate_report(
     <p><b>Risk Score:</b>
     {risk}</p>
 
-    <p><b>NEWS2 Score:</b>
+    <p><b>NEWS2:</b>
     {news2}</p>
 
-    <p><b>qSOFA Score:</b>
+    <p><b>qSOFA:</b>
     {qsofa}</p>
 
     </body>
@@ -453,6 +449,10 @@ if st.button("🚀 Run Diagnosis"):
         columns=features
     )
 
+    # =====================================================
+    # FIX FEATURE ALIGNMENT
+    # =====================================================
+
     expected_features = (
         scaler.feature_names_in_
     )
@@ -460,21 +460,32 @@ if st.button("🚀 Run Diagnosis"):
     for col in expected_features:
 
         if col not in input_df.columns:
+
             input_df[col] = 0
 
     input_df = input_df[
         expected_features
     ]
 
-    scaled = scaler.transform(input_df)
+    # =====================================================
+    # SCALE INPUT
+    # =====================================================
+
+    scaled = scaler.transform(
+        input_df
+    )
 
     # =====================================================
     # MODEL PREDICTION
     # =====================================================
 
-    prob = model.predict_proba(scaled)
+    prob = model.predict_proba(
+        scaled
+    )
 
-    pred_index = np.argmax(prob[0])
+    pred_index = np.argmax(
+        prob[0]
+    )
 
     ml_prediction = (
         label_encoder
@@ -500,9 +511,14 @@ if st.button("🚀 Run Diagnosis"):
         or "chest pain" in symptom_text
     ):
 
-        clinical_prediction = "Cardiac Risk"
+        clinical_prediction = (
+            "Cardiac Risk"
+        )
 
-        confidence = max(confidence,96)
+        confidence = max(
+            confidence,
+            96
+        )
 
         override_reason = (
             "Extreme tachycardia / chest pain"
@@ -510,9 +526,14 @@ if st.button("🚀 Run Diagnosis"):
 
     elif gluc > 200:
 
-        clinical_prediction = "Diabetes"
+        clinical_prediction = (
+            "Diabetes"
+        )
 
-        confidence = max(confidence,95)
+        confidence = max(
+            confidence,
+            95
+        )
 
         override_reason = (
             "High glucose detected"
@@ -520,9 +541,14 @@ if st.button("🚀 Run Diagnosis"):
 
     elif temp >= 39:
 
-        clinical_prediction = "Fever"
+        clinical_prediction = (
+            "Fever"
+        )
 
-        confidence = max(confidence,90)
+        confidence = max(
+            confidence,
+            90
+        )
 
         override_reason = (
             "High fever detected"
@@ -530,9 +556,14 @@ if st.button("🚀 Run Diagnosis"):
 
     elif spo2 < 90:
 
-        clinical_prediction = "Respiratory Disease"
+        clinical_prediction = (
+            "Respiratory Disease"
+        )
 
-        confidence = max(confidence,92)
+        confidence = max(
+            confidence,
+            92
+        )
 
         override_reason = (
             "Low oxygen saturation"
@@ -567,16 +598,19 @@ if st.button("🚀 Run Diagnosis"):
 
     if spo2 < 91:
         news2 += 3
+
     elif spo2 < 94:
         news2 += 2
 
     if temp > 39:
         news2 += 3
+
     elif temp > 38:
         news2 += 1
 
     if hr > 130:
         news2 += 3
+
     elif hr > 110:
         news2 += 2
 
@@ -602,12 +636,15 @@ if st.button("🚀 Run Diagnosis"):
     severity = "Mild"
 
     if risk >= 6:
+
         severity = "Critical"
 
     elif risk >= 4:
+
         severity = "Severe"
 
     elif risk >= 2:
+
         severity = "Moderate"
 
     # =====================================================
@@ -642,7 +679,7 @@ if st.button("🚀 Run Diagnosis"):
     <hr>
 
     <h3>
-    ML Model Prediction :
+    ML Prediction :
     {ml_prediction}
     ({round(confidence,2)}%)
     </h3>
@@ -664,12 +701,21 @@ if st.button("🚀 Run Diagnosis"):
     c1, c2, c3 = st.columns(3)
 
     with c1:
-        st.metric("⚠️ Risk Score", risk)
+
+        st.metric(
+            "⚠️ Risk Score",
+            risk
+        )
 
     with c2:
-        st.metric("🔥 Severity", severity)
+
+        st.metric(
+            "🔥 Severity",
+            severity
+        )
 
     with c3:
+
         st.metric(
             "🧠 Confidence",
             f"{round(confidence,2)}%"
@@ -691,6 +737,7 @@ if st.button("🚀 Run Diagnosis"):
         )
 
         if news2 >= 5:
+
             st.error(
                 "High Clinical Deterioration Risk"
             )
@@ -703,12 +750,13 @@ if st.button("🚀 Run Diagnosis"):
         )
 
         if qsofa >= 2:
+
             st.warning(
                 "Possible Sepsis Risk"
             )
 
     # =====================================================
-    # EMERGENCY ALERT
+    # ALERT
     # =====================================================
 
     if severity == "Critical":
@@ -720,7 +768,7 @@ Immediate medical attention recommended.
         """)
 
     # =====================================================
-    # EMAIL ALERT
+    # EMAIL
     # =====================================================
 
     if email:
@@ -737,11 +785,17 @@ Immediate medical attention recommended.
     # =====================================================
 
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
+
         "📊 Dashboard",
+
         "🔍 Explainability",
+
         "💊 Treatment",
+
         "🧠 Hybrid AI",
+
         "📈 Evaluation"
+
     ])
 
     # =====================================================
@@ -757,18 +811,26 @@ Immediate medical attention recommended.
 
             "Probability":
             prob[0] * 100
+
         })
 
         fig = px.bar(
+
             prob_df.sort_values(
                 by="Probability",
                 ascending=True
             ),
+
             x="Probability",
+
             y="Disease",
+
             orientation='h',
+
             text="Probability",
+
             title="ML Model Probability Distribution"
+
         )
 
         fig.update_layout(
@@ -780,336 +842,210 @@ Immediate medical attention recommended.
             use_container_width=True
         )
 
-        # Gauge chart
+        # Gauge
 
         gauge = go.Figure(go.Indicator(
-            mode = "gauge+number",
-            value = confidence,
-            title = {'text': "Prediction Confidence"},
-            gauge = {'axis': {'range': [0, 100]}}
+
+            mode="gauge+number",
+
+            value=confidence,
+
+            title={
+                'text': "Prediction Confidence"
+            },
+
+            gauge={
+                'axis': {
+                    'range': [0,100]
+                }
+            }
+
         ))
 
         st.plotly_chart(gauge)
 
     # =====================================================
-# =====================================================
-# EXPLAINABILITY TAB
-# =====================================================
+    # EXPLAINABILITY
+    # =====================================================
 
-with tab2:
+    with tab2:
 
-    st.title("🔍 Explainable AI Analysis")
+        st.title("🔍 Explainable AI Analysis")
 
-    # =================================================
-    # CLINICAL REASONING
-    # =================================================
-
-    st.subheader("🏥 Clinical Reasoning")
-
-    reasons = []
-
-    # -----------------------------------------------
-    # CARDIAC
-    # -----------------------------------------------
-
-    if hr >= 145:
-
-        reasons.append(
-            "Extreme tachycardia detected "
-            "(HR above 145)"
+        st.subheader(
+            "🏥 Clinical Reasoning"
         )
 
-    if "chest pain" in symptom_text:
+        reasons = []
 
-        reasons.append(
-            "Chest pain indicates "
-            "possible cardiac risk"
-        )
+        if hr >= 145:
 
-    # -----------------------------------------------
-    # DIABETES
-    # -----------------------------------------------
-
-    if gluc > 200:
-
-        reasons.append(
-            "High glucose indicates "
-            "diabetes risk"
-        )
-
-    # -----------------------------------------------
-    # FEVER
-    # -----------------------------------------------
-
-    if temp > 38:
-
-        reasons.append(
-            "High temperature suggests "
-            "infection or fever"
-        )
-
-    # -----------------------------------------------
-    # RESPIRATORY
-    # -----------------------------------------------
-
-    if spo2 < 92:
-
-        reasons.append(
-            "Low oxygen saturation detected"
-        )
-
-    # -----------------------------------------------
-    # OVERRIDE
-    # -----------------------------------------------
-
-    if override_reason:
-
-        reasons.append(
-            f"Clinical Override Applied: "
-            f"{override_reason}"
-        )
-
-    # -----------------------------------------------
-    # DISPLAY REASONS
-    # -----------------------------------------------
-
-    if len(reasons) > 0:
-
-        for reason in reasons:
-
-            st.success(reason)
-
-    else:
-
-        st.info(
-            "No major abnormal findings detected."
-        )
-
-    # =================================================
-    # SHAP EXPLAINABILITY
-    # =================================================
-
-    st.subheader("🧠 SHAP Explainable AI")
-
-    try:
-
-        if explainer is not None:
-
-            # ----------------------------------------
-            # CALCULATE SHAP VALUES
-            # ----------------------------------------
-
-            shap_values = explainer.shap_values(
-                input_df
+            reasons.append(
+                "Extreme tachycardia detected"
             )
 
-            # ----------------------------------------
-            # HANDLE MULTICLASS MODELS
-            # ----------------------------------------
+        if "chest pain" in symptom_text:
 
-            if isinstance(shap_values, list):
-
-                shap_single = (
-                    shap_values[pred_index][0]
-                )
-
-            else:
-
-                shap_single = shap_values[0]
-
-            # ----------------------------------------
-            # CONVERT TO 1D
-            # ----------------------------------------
-
-            shap_single = np.array(
-                shap_single
-            ).flatten()
-
-            # ----------------------------------------
-            # FIX SHAPE MISMATCH
-            # ----------------------------------------
-
-            feature_count = len(
-                input_df.columns
+            reasons.append(
+                "Chest pain indicates cardiac risk"
             )
 
-            shap_count = len(
-                shap_single
+        if gluc > 200:
+
+            reasons.append(
+                "High glucose indicates diabetes risk"
             )
 
-            min_len = min(
-                feature_count,
-                shap_count
+        if temp > 38:
+
+            reasons.append(
+                "High temperature suggests infection"
             )
 
-            features_used = (
-                input_df.columns[:min_len]
+        if spo2 < 92:
+
+            reasons.append(
+                "Low oxygen saturation detected"
             )
 
-            shap_used = (
-                shap_single[:min_len]
+        if override_reason:
+
+            reasons.append(
+                f"Clinical Override Applied: "
+                f"{override_reason}"
             )
 
-            # ----------------------------------------
-            # CREATE DATAFRAME
-            # ----------------------------------------
+        if len(reasons) > 0:
 
-            shap_df = pd.DataFrame({
+            for reason in reasons:
 
-                "Feature":
-                features_used,
-
-                "Impact":
-                np.abs(shap_used)
-
-            })
-
-            # ----------------------------------------
-            # SORT FEATURES
-            # ----------------------------------------
-
-            shap_df = shap_df.sort_values(
-
-                by="Impact",
-
-                ascending=False
-
-            )
-
-            # ----------------------------------------
-            # TOP FEATURES
-            # ----------------------------------------
-
-            top_shap = shap_df.head(10)
-
-            # ----------------------------------------
-            # SHOW TABLE
-            # ----------------------------------------
-
-            st.subheader(
-                "Top Influential Features"
-            )
-
-            st.dataframe(
-                top_shap,
-                use_container_width=True
-            )
-
-            # ----------------------------------------
-            # BAR CHART
-            # ----------------------------------------
-
-            fig_shap = px.bar(
-
-                top_shap,
-
-                x="Impact",
-
-                y="Feature",
-
-                orientation="h",
-
-                text="Impact",
-
-                title=(
-                    "SHAP Feature Impact Analysis"
-                )
-
-            )
-
-            fig_shap.update_layout(
-
-                template="plotly_dark",
-
-                height=500
-
-            )
-
-            st.plotly_chart(
-
-                fig_shap,
-
-                use_container_width=True
-
-            )
-
-            # ----------------------------------------
-            # AI INTERPRETATION
-            # ----------------------------------------
-
-            st.subheader(
-                "🧠 AI Interpretation"
-            )
-
-            top_feature = (
-                top_shap.iloc[0]["Feature"]
-            )
-
-            top_value = round(
-                top_shap.iloc[0]["Impact"],
-                3
-            )
-
-            st.info(f"""
-
-Most influential feature:
-{top_feature}
-
-Impact Score:
-{top_value}
-
-This feature had the highest
-contribution toward the model's
-prediction.
-
-            """)
+                st.success(reason)
 
         else:
 
-            st.warning(
-                "SHAP explainer unavailable."
+            st.info(
+                "No major abnormal findings detected."
             )
 
-    except Exception as e:
+        # =================================================
+        # SHAP
+        # =================================================
 
-        st.error(
-            f"SHAP Error: {e}"
-        )
+        st.subheader("🧠 SHAP Explainable AI")
 
-        # SHOW TABLE
-        # --------------------------------------------
+        try:
 
-            st.dataframe(
-                shap_df.head(15)
+            if explainer is not None:
+
+                shap_values = (
+                    explainer.shap_values(
+                        input_df
+                    )
+                )
+
+                if isinstance(
+                    shap_values,
+                    list
+                ):
+
+                    shap_single = (
+                        shap_values[pred_index][0]
+                    )
+
+                else:
+
+                    shap_single = (
+                        shap_values[0]
+                    )
+
+                shap_single = np.array(
+                    shap_single
+                ).flatten()
+
+                feature_count = len(
+                    input_df.columns
+                )
+
+                shap_count = len(
+                    shap_single
+                )
+
+                min_len = min(
+                    feature_count,
+                    shap_count
+                )
+
+                features_used = (
+                    input_df.columns[:min_len]
+                )
+
+                shap_used = (
+                    shap_single[:min_len]
+                )
+
+                shap_df = pd.DataFrame({
+
+                    "Feature":
+                    features_used,
+
+                    "Impact":
+                    np.abs(shap_used)
+
+                })
+
+                shap_df = (
+                    shap_df.sort_values(
+                        by="Impact",
+                        ascending=False
+                    )
+                )
+
+                top_shap = (
+                    shap_df.head(10)
+                )
+
+                st.dataframe(
+                    top_shap,
+                    use_container_width=True
+                )
+
+                fig_shap = px.bar(
+
+                    top_shap,
+
+                    x="Impact",
+
+                    y="Feature",
+
+                    orientation="h",
+
+                    text="Impact",
+
+                    title="SHAP Feature Impact Analysis"
+
+                )
+
+                fig_shap.update_layout(
+
+                    template="plotly_dark",
+
+                    height=500
+
+                )
+
+                st.plotly_chart(
+
+                    fig_shap,
+
+                    use_container_width=True
+
+                )
+
+        except Exception as e:
+
+            st.error(
+                f"SHAP Error: {e}"
             )
-
-        # --------------------------------------------
-        # BAR CHART
-        # --------------------------------------------
-
-            fig_shap = px.bar(
-
-                shap_df.head(10),
-
-                x="Impact",
-
-                y="Feature",
-
-                orientation='h',
-
-                title="Top SHAP Feature Impacts"
-
-            )
-
-            st.plotly_chart(
-                fig_shap,
-                use_container_width=True
-            )
-
-    except Exception as e:
-
-        st.warning(f"SHAP Error: {e}")
-
 
     # =====================================================
     # TREATMENT
@@ -1139,6 +1075,7 @@ prediction.
         ]
 
         if meds.empty:
+
             meds = med_db.head(5)
 
         for _, row in meds.head(10).iterrows():
@@ -1183,26 +1120,17 @@ prediction.
 
         ## Hybrid AI Layers
 
-        ### 1. NLP Symptom Engine
-        Extracts symptoms using keyword mapping.
+        1. NLP Symptom Engine
 
-        ### 2. Machine Learning Prediction
-        Predicts disease probability using trained AI model.
+        2. Machine Learning Prediction
 
-        ### 3. Clinical Override Engine
-        Detects emergency situations like:
-        - Cardiac Risk
-        - Respiratory Failure
-        - Severe Fever
+        3. Clinical Override Engine
 
-        ### 4. Risk Scoring System
-        Calculates patient severity.
+        4. Risk Scoring System
 
-        ### 5. Explainable AI
-        SHAP-based interpretation for transparency.
+        5. Explainable AI
 
-        ### 6. Clinical Alert System
-        Generates emergency notifications.
+        6. Emergency Alert System
         """)
 
         st.code("""
@@ -1235,31 +1163,48 @@ Dashboard + Alerts + Reports
 
         metrics_data = {
 
-            "Metric": [
+            "Metric":[
+
                 "Accuracy",
+
                 "Precision",
+
                 "Recall",
+
                 "F1 Score"
+
             ],
 
-            "Value": [
+            "Value":[
+
                 0.97,
+
                 0.96,
+
                 0.95,
+
                 0.95
             ]
         }
 
-        metrics_df = pd.DataFrame(metrics_data)
+        metrics_df = pd.DataFrame(
+            metrics_data
+        )
 
         st.dataframe(metrics_df)
 
         fig_metrics = px.bar(
+
             metrics_df,
+
             x="Metric",
+
             y="Value",
+
             text="Value",
+
             title="Model Performance"
+
         )
 
         st.plotly_chart(
@@ -1272,22 +1217,33 @@ Dashboard + Alerts + Reports
     # =====================================================
 
     report = generate_report(
+
         name,
+
         ml_prediction,
+
         clinical_prediction,
+
         round(confidence,2),
+
         severity,
+
         risk,
+
         news2,
+
         qsofa
+
     )
 
     st.download_button(
+
         "📄 Download Clinical Report",
+
         report,
+
         file_name=f"{name}_report.html",
+
         mime="text/html"
+
     )
-
-
-## Intelligent Hybrid Clinical Decision Support System using Explainable AI
