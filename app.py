@@ -1039,22 +1039,6 @@ Dashboard + Alerts + Reports
         file_name=f"{name}_report.html",
         mime="text/html"
     )
-```
 
-# requirements.txt
-
-```txt
-streamlit
-pandas
-numpy
-plotly
-scikit-learn
-joblib
-shap
-matplotlib
-openpyxl
-```
-
-# Final Recommended Project Title
 
 ## Intelligent Hybrid Clinical Decision Support System using Explainable AI
