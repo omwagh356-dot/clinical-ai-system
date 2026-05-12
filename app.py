@@ -324,18 +324,16 @@ if st.button("🚀 Run Diagnosis"):
     # =====================================================
     prob = model.predict_proba(scaled)
 
-    # IMPORTANT FIX
     pred_index = np.argmax(prob[0])
 
-    model_class = model.classes_[pred_index]
-
     disease = label_encoder.inverse_transform(
-        [model_class]
+        [pred_index]
     )[0]
 
     confidence = float(
         prob[0][pred_index] * 100
     )
+
 
     # =====================================================
     # CLINICAL OVERRIDE SYSTEM
@@ -470,9 +468,10 @@ if st.button("🚀 Run Diagnosis"):
         )
 
         prob_df = pd.DataFrame({
-            "Disease": decoded_labels,
+            "Disease": label_encoder.classes_,
             "Probability": prob[0] * 100
         })
+
 
         prob_df = prob_df.sort_values(
             by="Probability",
@@ -526,6 +525,19 @@ if st.button("🚀 Run Diagnosis"):
                 "Final Prediction:",
                 disease
             )
+
+        with st.expander("Model Metadata"):
+
+            st.write(
+                "Model Classes:",
+            model.classes_
+            )
+
+            st.write(
+                "Encoder Classes:",
+            label_encoder.classes_
+            )
+
 
     # =====================================================
     # EXPLAINABILITY
