@@ -840,27 +840,86 @@ Immediate medical attention recommended.
         # SHAP EXPLAINABILITY
         # =================================================
 
-        st.subheader("🧠 SHAP Explainable AI")
+        # =================================================
+# SHAP EXPLAINABILITY
+# =================================================
 
-        try:
+    st.subheader("🧠 SHAP Explainable AI")
 
-            if explainer:
+    try:
 
-                shap_values = explainer.shap_values(input_df)
+        if explainer:
 
-                fig_shap, ax = plt.subplots(figsize=(10,6))
+        # --------------------------------------------
+        # GET SHAP VALUES
+        # --------------------------------------------
 
-                shap.summary_plot(
-                    shap_values,
-                    input_df,
-                    show=False
-                )
+            shap_values = explainer.shap_values(input_df)
 
-                st.pyplot(fig_shap)
+        # --------------------------------------------
+        # HANDLE MULTI-CLASS MODELS
+        # --------------------------------------------
 
-        except Exception as e:
+            if isinstance(shap_values, list):
 
-            st.warning(f"SHAP Error: {e}")
+                shap_single = shap_values[pred_index][0]
+
+            else:
+
+                shap_single = shap_values[0]
+
+        # --------------------------------------------
+        # CREATE SHAP DATAFRAME
+        # --------------------------------------------
+
+            shap_df = pd.DataFrame({
+
+                "Feature": input_df.columns,
+
+                "Impact": np.abs(shap_single)
+
+            })
+
+            shap_df = shap_df.sort_values(
+                    by="Impact",
+                    ascending=False
+            )
+
+        # --------------------------------------------
+        # SHOW TABLE
+        # --------------------------------------------
+
+            st.dataframe(
+                shap_df.head(15)
+            )
+
+        # --------------------------------------------
+        # BAR CHART
+        # --------------------------------------------
+
+            fig_shap = px.bar(
+
+                shap_df.head(10),
+
+                x="Impact",
+
+                y="Feature",
+
+                orientation='h',
+
+                title="Top SHAP Feature Impacts"
+
+            )
+
+            st.plotly_chart(
+                fig_shap,
+                use_container_width=True
+            )
+
+    except Exception as e:
+
+        st.warning(f"SHAP Error: {e}")
+
 
     # =====================================================
     # TREATMENT
