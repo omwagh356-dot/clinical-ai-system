@@ -215,7 +215,7 @@ def build_pdf_report(name, age, res_dict):
 # APPLICATION CORE GRAPHICAL UI
 # =========================================================
 st.markdown("<div class='main-title'>🛡️ Intelligent Hybrid Clinical Decision Support System</div>", unsafe_allow_html=True)
-st.caption("MSc Data Science Project | Onkar Suresh Wagh")
+st.caption("MSc Data Science Project Framework | Built by Onkar Suresh Wagh")
 
 # Organizing layout components into functional data columns
 col1, col2 = st.columns(2)
@@ -317,7 +317,7 @@ if st.button("🚀 Execute Hybrid Pipeline Inference"):
 # =========================================================
 # ASYNCHRONOUS GRAPHICS RENDERING VIEW INTERFACE
 # =========================================================
-if st.session_state.diagnosis_triggered:
+if st.session_state.diagnosis_triggered and "status_ui" in st.session_state.results:
     res = st.session_state.results
     box_color = "#ff4b4b" if "CRITICAL" in res["status_ui"] else "#28a745"
     
@@ -338,7 +338,7 @@ if st.session_state.diagnosis_triggered:
     # Building Tabs structure mapping required modules
     tab1, tab2, tab3, tab4 = st.tabs([
         "📊 Analytical Dashboard", "🔍 SHAP Explainability Engine", 
-        "💊 Pharmaceutical Database Matches", "📈 Scientific Validation Metrics"
+        "💊 Pharmaceutical Database Matches", "📈 Scientific Validation & Model Logic"
     ])
     
     with tab1:
@@ -354,16 +354,13 @@ if st.session_state.diagnosis_triggered:
         st.caption("Quantifying the distinct mathematical feature weights driving this specific instance classification.")
         
         try:
-            # Dynamically initialize the Explainer based on the underlying model architecture type
             if hasattr(assets["model"], "tree_method") or "Forest" in type(assets["model"]).__name__ or "Tree" in type(assets["model"]).__name__:
                 explainer = shap.TreeExplainer(assets["model"])
             else:
                 explainer = shap.KernelExplainer(assets["model"].predict_proba, res["scaled_input"][:1])
             
-            # Compute raw SHAP localized arrays
             shap_values = explainer.shap_values(res["scaled_input"])
             
-            # Extract safe index targets whether multi-class list format or standard array shapes exist
             if isinstance(shap_values, list):
                 shap_single = shap_values[res["pred_index"]][0]
             elif len(shap_values.shape) == 3:
@@ -373,7 +370,6 @@ if st.session_state.diagnosis_triggered:
                 
             shap_single = np.abs(np.array(shap_single).flatten())
             
-            # Form clean Pandas matching schemas
             min_len = min(len(res["input_df"].columns), len(shap_single))
             features_used = res["input_df"].columns[:min_len]
             shap_used = shap_single[:min_len]
@@ -381,7 +377,6 @@ if st.session_state.diagnosis_triggered:
             shap_df = pd.DataFrame({"Feature Attribute": features_used, "Absolute Impact Score": shap_used})
             shap_df = shap_df.sort_values(by="Absolute Impact Score", ascending=False).head(10)
             
-            # Render interactive horizontal visualization metrics
             fig_shap = px.bar(
                 shap_df, 
                 x="Absolute Impact Score", 
@@ -417,54 +412,55 @@ if st.session_state.diagnosis_triggered:
             st.info("No explicit dynamic medicine records matching this system diagnosis category key inside local database storage maps.")
 
     with tab4:
-        st.header("🔬 Model Validation Performance Metrics")
+        # Split Tab 4 into side-by-side components: Left for Performance Metrics, Right for Model Theory
+        left_col, right_col = st.columns([3, 2])
         
-        # Display baseline tabular validation criteria
-        st.dataframe(pd.DataFrame({
-            "Metric Criteria": ["Inference Model Accuracy", "Calculated Precision Score", "Sensitivity / Recall", "Aggregated F1 Vector Metric"],
-            "Dataset Stratified Performance Values": [0.971, 0.964, 0.952, 0.958]
-        }), use_container_width=True)
-        
-        g1, g2, g3 = st.columns(3)
-        
-        with g1:
-            st.subheader("Receiver Operating Characteristic")
-            fpr, tpr, _ = roc_curve(y_true, y_scores)
-            roc_auc = auc(fpr, tpr)
+        with left_col:
+            st.header("🔬 Model Validation Performance Metrics")
             
-            fig_roc, ax_roc = plt.subplots(figsize=(5, 5))
-            ax_roc.plot(fpr, tpr, color='#00ff99', lw=2, label=f'ROC curve (AUC = {roc_auc:0.2f})')
-            ax_roc.plot([0, 1], [0, 1], color='#ff4b4b', lw=1, linestyle='--')
-            ax_roc.set_xlim([0.0, 1.0])
-            ax_roc.set_ylim([0.0, 1.05])
-            ax_roc.set_xlabel('False Positive Rate', color='white')
-            ax_roc.set_ylabel('True Positive Rate', color='white')
-            ax_roc.legend(loc="lower right")
+            st.dataframe(pd.DataFrame({
+                "Metric Criteria": ["Inference Model Accuracy", "Calculated Precision Score", "Sensitivity / Recall", "Aggregated F1 Vector Metric"],
+                "Dataset Stratified Performance Values": [0.971, 0.964, 0.952, 0.958]
+            }), use_container_width=True)
             
-            # Formatting visual alignment styles for dark-theme coherence
-            fig_roc.patch.set_facecolor('#1a2a3a')
-            ax_roc.set_facecolor('#0f2027')
-            ax_roc.spines['bottom'].set_color('white')
-            ax_roc.spines['left'].set_color('white')
-            ax_roc.spines['top'].set_visible(False)
-            ax_roc.spines['right'].set_visible(False)
-            ax_roc.tick_params(colors='white')
-            st.pyplot(fig_roc)
+            g1, g2 = st.columns(2)
             
-        with g2:
-            st.subheader("Model Diagnostic Confusion Matrix")
-            cm_matrix = confusion_matrix(y_true, y_pred)
-            fig_cm, ax_cm = plt.subplots(figsize=(5, 5))
-            sns.heatmap(cm_matrix, annot=True, fmt='d', cmap='Purples', cbar=False, ax=ax_cm,
-                        xticklabels=['Negative Case', 'Positive Case'], yticklabels=['Negative Case', 'Positive Case'])
-            ax_cm.set_xlabel('Predicted Structural Label Output Class', color='white')
-            ax_cm.set_ylabel('True Ground Validation Target Label', color='white')
-            
-            fig_cm.patch.set_facecolor('#1a2a3a')
-            ax_cm.tick_params(colors='white')
-            st.pyplot(fig_cm)
-            
-        with g3:
+            with g1:
+                st.subheader("Receiver Operating Characteristic")
+                fpr, tpr, _ = roc_curve(y_true, y_scores)
+                roc_auc = auc(fpr, tpr)
+                
+                fig_roc, ax_roc = plt.subplots(figsize=(4.5, 4.5))
+                ax_roc.plot(fpr, tpr, color='#00ff99', lw=2, label=f'ROC curve (AUC = {roc_auc:0.2f})')
+                ax_roc.plot([0, 1], [0, 1], color='#ff4b4b', lw=1, linestyle='--')
+                ax_roc.set_xlim([0.0, 1.0])
+                ax_roc.set_ylim([0.0, 1.05])
+                ax_roc.set_xlabel('False Positive Rate', color='white')
+                ax_roc.set_ylabel('True Positive Rate', color='white')
+                ax_roc.legend(loc="lower right")
+                
+                fig_roc.patch.set_facecolor('#1a2a3a')
+                ax_roc.set_facecolor('#0f2027')
+                ax_roc.spines['bottom'].set_color('white')
+                ax_roc.spines['left'].set_color('white')
+                ax_roc.spines['top'].set_visible(False)
+                ax_roc.spines['right'].set_visible(False)
+                ax_roc.tick_params(colors='white')
+                st.pyplot(fig_roc)
+                
+            with g2:
+                st.subheader("Model Confusion Matrix")
+                cm_matrix = confusion_matrix(y_true, y_pred)
+                fig_cm, ax_cm = plt.subplots(figsize=(4.5, 4.5))
+                sns.heatmap(cm_matrix, annot=True, fmt='d', cmap='Purples', cbar=False, ax=ax_cm,
+                            xticklabels=['Negative', 'Positive'], yticklabels=['Negative', 'Positive'])
+                ax_cm.set_xlabel('Predicted Label Output Class', color='white')
+                ax_cm.set_ylabel('True Ground Validation Label', color='white')
+                
+                fig_cm.patch.set_facecolor('#1a2a3a')
+                ax_cm.tick_params(colors='white')
+                st.pyplot(fig_cm)
+                
             st.subheader("Stratified K-Fold Cross-Validation Accuracy")
             fig_cv = px.bar(
                 x=[f"Split Fold {i+1}" for i in range(len(cv_scores))], 
@@ -472,9 +468,41 @@ if st.session_state.diagnosis_triggered:
                 labels={'x': 'Validation Iteration Subsets', 'y': 'Measured Categorical Accuracy Target'},
                 title=f"Evaluated Mean Cross Validation Index Score: {np.mean(cv_scores):.4f}"
             )
-            fig_cv.update_layout(template="plotly_dark")
+            fig_cv.update_layout(template="plotly_dark", height=350)
             fig_cv.update_yaxes(range=[0, 1.0])
             st.plotly_chart(fig_cv, use_container_width=True)
+
+        with right_col:
+            st.header("🧠 How the Model Architecture Works")
+            st.markdown("""
+            This platform uses a **Hybrid Clinical Decision Support System (CDSS)** architecture. It blends statistical pattern recognition with clinical safety systems, operating across three distinct layers:
+            
+            ### Layer 1: NLP Parse & Inference Pipeline
+            1. **Feature Mapping:** Unstructured text from patient narratives is parsed using a keyword extraction filter, matching token frequencies to build a deterministic symptom vector.
+            2. **ML Classification Layer:** The vector is merged with real-time vital metrics, standardized via `scaler.pkl`, and run through an ensemble algorithm (`model.pkl`) to generate raw probability scores:
+            """)
+            
+            st.code("""
+Raw Symptoms + Vitals Inputs
+             ↓
+[Standard Feature Normalization]
+             ↓
+[Ensemble Softmax Inference]
+             ↓
+Generates ML Hypothesis Output
+            """, language="text")
+            
+            st.markdown("""
+            ### Layer 2: Symbolic Expert Override Engine
+            To protect patients from high-stakes Machine Learning failures (such as a False Negative on an acute myocardial infarction), a deterministic expert system acts as a safety guardrail.
+            
+            If a patient matches critical emergency criteria (e.g., $SpO_2 < 90\%$ or acute chest pain), the symbolic engine bypasses the ML probability matrix and enforces a higher risk alert status.
+            
+            ### Layer 3: Risk Stratification Scores
+            The platform simultaneously runs independent medical risk equations:
+            * **NEWS2 (National Early Warning Score):** Formally weights cardiorespiratory clinical deterioration.
+            * **qSOFA (quick Sequential Organ Failure Assessment):** Tracks systemic indicators associated with sepsis vulnerability.
+            """)
 
     # =========================================================
     # ENCODED BINARY PDF GENERATION DISPATCH BLOCK
@@ -492,3 +520,5 @@ if st.session_state.diagnosis_triggered:
         )
     except Exception as pdf_error:
         st.error(f"Failed handling raw compilation configurations to local PDF stream: {pdf_error}")
+else:
+    st.info("💡 Complete inputs above and click '🚀 Execute Hybrid Pipeline Inference' to generate the clinical decision system diagnostic metrics output.")
