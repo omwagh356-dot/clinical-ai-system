@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 import joblib
 import os
 import smtplib
+import shap
 import matplotlib.pyplot as plt
 import seaborn as sns
 from email.message import EmailMessage
@@ -182,7 +183,7 @@ def build_pdf_report(name, age, res_dict):
     # Metadata Block
     pdf.set_fill_color(240, 244, 245)
     pdf.cell(0, 8, f"Patient Identifier Profile: {name}", ln=1, fill=True)
-    pdf.cell(0, 8, f"Age: {age} | Dynamic Status Tiering: {res_dict['status']}", ln=1, fill=True)
+    pdf.cell(0, 8, f"Age: {age} | Dynamic Status Tiering: {res_dict['status_text']}", ln=1, fill=True)
     pdf.cell(0, 8, f"Calculated Aggregated Risk Score Index: {res_dict['risk']}", ln=1, fill=True)
     pdf.ln(6)
     
@@ -198,7 +199,7 @@ def build_pdf_report(name, age, res_dict):
     if res_dict['override_reason']:
         pdf.set_font("Arial", "B", 11)
         pdf.set_text_color(204, 0, 0)
-        pdf.cell(0, 6, f"⚠️ Expert Override Logic Fired: {res_dict['override_reason']}", ln=1)
+        pdf.cell(0, 6, f"Clinical Override Logic Fired: {res_dict['override_reason']}", ln=1)
         pdf.set_text_color(0, 0, 0)
         pdf.ln(4)
         
@@ -214,7 +215,7 @@ def build_pdf_report(name, age, res_dict):
 # APPLICATION CORE GRAPHICAL UI
 # =========================================================
 st.markdown("<div class='main-title'>🛡️ Intelligent Hybrid Clinical Decision Support System</div>", unsafe_allow_html=True)
-st.caption("MSc Data Science Project Framework | Built by Onkar Suresh Wagh")
+st.caption("MSc Data Science Project | Onkar Suresh Wagh")
 
 # Organizing layout components into functional data columns
 col1, col2 = st.columns(2)
@@ -290,26 +291,35 @@ if st.button("🚀 Execute Hybrid Pipeline Inference"):
     
     qsofa = sum([1 if bp < 100 else 0, 1 if hr > 120 else 0, 1 if spo2 < 90 else 0])
     severity = "Critical" if risk >= 6 else ("Severe" if risk >= 4 else ("Moderate" if risk >= 2 else "Mild"))
-    status = "🔴 CRITICAL" if severity in ["Severe", "Critical"] else "🟢 STABLE"
+    
+    # Decoupled status variables: UI box keeps emojis, PDF version utilizes strict safe standard string texts
+    if severity in ["Severe", "Critical"]:
+        status_ui = "🔴 CRITICAL"
+        status_text = "CRITICAL RISK PROFILE"
+    else:
+        status_ui = "🟢 STABLE"
+        status_text = "STABLE STATUS CONDITIONS"
     
     # Saving pipeline dictionary outputs to Session State memory mapping
     st.session_state.results = {
         "ml_prediction": ml_prediction, "clinical_prediction": clinical_prediction,
         "confidence": confidence, "risk": risk, "news2": news2, "qsofa": qsofa,
-        "severity": severity, "status": status, "override_reason": override_reason,
-        "symptom_text": symptom_text, "input_df": input_df, "prob_array": prob[0]
+        "severity": severity, "status_ui": status_ui, "status_text": status_text, 
+        "override_reason": override_reason, "symptom_text": symptom_text, 
+        "input_df": input_df, "prob_array": prob[0], "pred_index": pred_index,
+        "scaled_input": scaled_input
     }
     st.session_state.diagnosis_triggered = True
     
     if email:
-        send_email(email, name, clinical_prediction, status)
+        send_email(email, name, clinical_prediction, status_ui)
 
 # =========================================================
 # ASYNCHRONOUS GRAPHICS RENDERING VIEW INTERFACE
 # =========================================================
 if st.session_state.diagnosis_triggered:
     res = st.session_state.results
-    box_color = "#ff4b4b" if "CRITICAL" in res["status"] else "#28a745"
+    box_color = "#ff4b4b" if "CRITICAL" in res["status_ui"] else "#28a745"
     
     st.markdown(f"""
     <div class='status-box' style='background:{box_color};'>
@@ -327,7 +337,7 @@ if st.session_state.diagnosis_triggered:
     
     # Building Tabs structure mapping required modules
     tab1, tab2, tab3, tab4 = st.tabs([
-        "📊 Analytical Dashboard", "🔍 Post-Hoc Explainability Engine", 
+        "📊 Analytical Dashboard", "🔍 SHAP Explainability Engine", 
         "💊 Pharmaceutical Database Matches", "📈 Scientific Validation Metrics"
     ])
     
@@ -340,11 +350,54 @@ if st.session_state.diagnosis_triggered:
         st.plotly_chart(fig_prob, use_container_width=True)
         
     with tab2:
-        st.subheader("Clinical Expert Overrides Checked")
-        if res["override_reason"]:
-            st.warning(f"**Override Alert Triggered:** {res['override_reason']}")
-        else:
-            st.success("No validation baseline logic rules overridden. Structural inference fully algorithmic.")
+        st.subheader("🧠 SHAP (SHapley Additive exPlanations) Analysis")
+        st.caption("Quantifying the distinct mathematical feature weights driving this specific instance classification.")
+        
+        try:
+            # Dynamically initialize the Explainer based on the underlying model architecture type
+            if hasattr(assets["model"], "tree_method") or "Forest" in type(assets["model"]).__name__ or "Tree" in type(assets["model"]).__name__:
+                explainer = shap.TreeExplainer(assets["model"])
+            else:
+                explainer = shap.KernelExplainer(assets["model"].predict_proba, res["scaled_input"][:1])
+            
+            # Compute raw SHAP localized arrays
+            shap_values = explainer.shap_values(res["scaled_input"])
+            
+            # Extract safe index targets whether multi-class list format or standard array shapes exist
+            if isinstance(shap_values, list):
+                shap_single = shap_values[res["pred_index"]][0]
+            elif len(shap_values.shape) == 3:
+                shap_single = shap_values[0, :, res["pred_index"]]
+            else:
+                shap_single = shap_values[0]
+                
+            shap_single = np.abs(np.array(shap_single).flatten())
+            
+            # Form clean Pandas matching schemas
+            min_len = min(len(res["input_df"].columns), len(shap_single))
+            features_used = res["input_df"].columns[:min_len]
+            shap_used = shap_single[:min_len]
+            
+            shap_df = pd.DataFrame({"Feature Attribute": features_used, "Absolute Impact Score": shap_used})
+            shap_df = shap_df.sort_values(by="Absolute Impact Score", ascending=False).head(10)
+            
+            # Render interactive horizontal visualization metrics
+            fig_shap = px.bar(
+                shap_df, 
+                x="Absolute Impact Score", 
+                y="Feature Attribute", 
+                orientation="h",
+                title="Top 10 Feature Weights Driving the ML Inference Hypothesis",
+                text_auto='.4f'
+            )
+            fig_shap.update_layout(template="plotly_dark", height=450)
+            st.plotly_chart(fig_shap, use_container_width=True)
+            
+            st.dataframe(shap_df, use_container_width=True)
+            
+        except Exception as e:
+            st.error(f"Post-Hoc Explainer computation timed out or asset parameters mismatched: {e}")
+            st.info("Ensure features configurations strictly map historical background training inputs matrices format arrays.")
             
     with tab3:
         st.subheader("Indexed Pharmaceutical Vector Matches")
