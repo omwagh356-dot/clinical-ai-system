@@ -209,7 +209,8 @@ def build_pdf_report(name, age, res_dict):
     pdf.cell(0, 6, f" - NEWS2 Value: {res_dict['news2']}", ln=1)
     pdf.cell(0, 6, f" - qSOFA Assessment Score: {res_dict['qsofa']}", ln=1)
     
-    return pdf.output(dest="S").encode("latin-1")
+    # FIXED: fpdf2 returns a bytearray directly; do not run .encode("latin-1")
+    return pdf.output()
 
 # =========================================================
 # APPLICATION CORE GRAPHICAL UI
@@ -412,7 +413,6 @@ if st.session_state.diagnosis_triggered and "status_ui" in st.session_state.resu
             st.info("No explicit dynamic medicine records matching this system diagnosis category key inside local database storage maps.")
 
     with tab4:
-        # Split Tab 4 into side-by-side components: Left for Performance Metrics, Right for Model Theory
         left_col, right_col = st.columns([3, 2])
         
         with left_col:
@@ -484,11 +484,11 @@ if st.session_state.diagnosis_triggered and "status_ui" in st.session_state.resu
             
             st.code("""
 Raw Symptoms + Vitals Inputs
-             ↓
+             ▼
 [Standard Feature Normalization]
-             ↓
+             ▼
 [Ensemble Softmax Inference]
-             ↓
+             ▼
 Generates ML Hypothesis Output
             """, language="text")
             
