@@ -207,7 +207,8 @@ def build_pdf_report(name, age, res_dict):
     pdf.cell(0, 6, f" - NEWS2 Value: {res_dict['news2']}", ln=1)
     pdf.cell(0, 6, f" - qSOFA Assessment Score: {res_dict['qsofa']}", ln=1)
     
-    return pdf.output()
+    # FIXED: Wrapped bytearray output directly inside explicit bytes() conversion
+    return bytes(pdf.output())
 
 # =========================================================
 # APPLICATION CORE GRAPHICAL UI
@@ -294,18 +295,17 @@ if st.button("🚀 Execute Hybrid Pipeline Inference"):
     if severity in ["Severe", "Critical"]:
         status_ui = "🔴 CRITICAL"
         status_text = "CRITICAL RISK PROFILE"
-        live_label = 1 # Map to positive matrix quadrant
+        live_label = 1
     else:
         status_ui = "🟢 STABLE"
         status_text = "STABLE STATUS CONDITIONS"
-        live_label = 0 # Map to negative matrix quadrant
+        live_label = 0
     
     # LIVE INJECTION MATRIX RECOMPUTATION LAYER
-    # Appending the current transaction directly into the validation pool lists
     live_true = base_true_pool + [live_label]
     live_scores = base_scores_pool + [float(confidence / 100.0)]
     live_pred = [1 if score >= 0.5 else 0 for score in live_scores]
-    cv_scores = [0.972, 0.958, 0.965, 0.979, 0.961] # Base CV Folds array remains stable
+    cv_scores = [0.972, 0.958, 0.965, 0.979, 0.961]
     
     # Saving pipeline dictionary outputs to Session State memory mapping
     st.session_state.results = {
@@ -426,7 +426,6 @@ if st.session_state.diagnosis_triggered and "status_ui" in st.session_state.resu
             st.header("🔬 Live Recomputed Performance Metrics")
             st.caption("Your live patient profile inputs have been hot-swapped directly into the evaluation array below.")
             
-            # Recalculate true metrics parameters across validation vectors live!
             fpr, tpr, _ = roc_curve(res["live_true"], res["live_scores"])
             roc_auc = auc(fpr, tpr)
             cm_matrix = confusion_matrix(res["live_true"], res["live_pred"])
