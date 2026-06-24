@@ -25,67 +25,111 @@ st.set_page_config(
 # Custom Styling Block
 st.markdown("""
 <style>
-/* Clean, modern enterprise background */
+/* 1. Reduce the massive default top whitespace */
+.block-container {
+    padding-top: 2rem !important;
+    padding-bottom: 2rem !important;
+    max-width: 95% !important;
+}
+
+/* 2. Clean, modern enterprise background */
 .stApp {
-    background-color: #f4f7f6;
-    color: #2b3a42;
+    background-color: #f8f9fc;
+    color: #1e293b;
     font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
-/* Professional Dashboard Header */
+
+/* 3. Professional Dashboard Header */
 .main-title {
-    font-size: 36px;
-    font-weight: 700;
-    color: #004085; /* Trustworthy Clinical Blue */
+    font-size: 34px;
+    font-weight: 800;
+    color: #0f172a; 
     text-align: center;
     margin-bottom: 5px;
     letter-spacing: -0.5px;
 }
-/* Elevated, clean status box */
+
+/* 4. Force Input Fields to be crisp, white, and clearly defined */
+div[data-baseweb="input"] {
+    background-color: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 6px !important;
+    box-shadow: 0px 1px 2px rgba(0,0,0,0.03) !important;
+}
+div[data-baseweb="textarea"] {
+    background-color: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 6px !important;
+}
+
+/* 5. Style the primary 'Check Result' button so it looks clickable and premium */
+div.stButton > button {
+    background-color: #004085 !important;
+    color: #ffffff !important;
+    border-radius: 6px !important;
+    font-weight: 600 !important;
+    padding: 0.5rem 1.5rem !important;
+    border: none !important;
+    box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1) !important;
+    transition: all 0.2s ease-in-out;
+}
+div.stButton > button:hover {
+    background-color: #002752 !important;
+    box-shadow: 0px 6px 10px rgba(0, 0, 0, 0.15) !important;
+    transform: translateY(-1px);
+}
+
+/* 6. Elevated, clean status box for the results */
 .status-box {
     background-color: #ffffff;
-    border: 1px solid #e0e0e0;
+    border: 1px solid #e2e8f0;
     border-top: 5px solid #004085;
-    padding: 20px;
+    padding: 24px;
     border-radius: 8px;
     text-align: center;
-    margin-top: 15px;
+    margin-top: 20px;
     margin-bottom: 25px;
     box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.05);
 }
 .status-box h3 {
-    font-size: 20px;
-    color: #495057;
-    font-weight: 500;
-    margin-bottom: 10px;
+    font-size: 18px;
+    color: #475569;
+    font-weight: 600;
+    margin-bottom: 8px;
 }
 .status-box h2 {
-    font-size: 26px;
+    font-size: 24px;
     font-weight: 700;
+    color: #0f172a;
     margin-top: 0;
 }
-/* Structured medicine cards */
+
+/* 7. Structured medicine cards */
 .med-card {
     background-color: #ffffff;
-    padding: 18px;
-    border-radius: 6px;
-    margin-bottom: 15px;
-    border-left: 4px solid #17a2b8; /* Professional Teal */
-    box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.04);
-    border-top: 1px solid #f0f0f0;
-    border-right: 1px solid #f0f0f0;
-    border-bottom: 1px solid #f0f0f0;
+    padding: 16px;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    border-left: 4px solid #0284c7;
+    box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.04);
+    border: 1px solid #e2e8f0;
 }
 .med-card b {
-    color: #004085;
+    color: #0f172a;
     font-size: 16px;
 }
 .med-card small {
-    color: #6c757d;
+    color: #64748b;
     font-weight: 500;
 }
-/* Override Streamlit Metric Colors for a cohesive look */
+
+/* 8. Fix Streamlit Metric label colors */
+div[data-testid="stMetricLabel"] {
+    color: #475569 !important;
+    font-weight: 600 !important;
+}
 div[data-testid="stMetricValue"] {
-    color: #004085;
+    color: #0f172a !important;
 }
 </style>
 """, unsafe_allow_html=True)
