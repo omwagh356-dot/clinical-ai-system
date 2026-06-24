@@ -25,67 +25,199 @@ st.set_page_config(
 # Custom Styling Block
 st.markdown("""
 <style>
-/* Clean, modern enterprise background */
+/* ── Base ── */
 .stApp {
-    background-color: #f4f7f6;
-    color: #2b3a42;
+    background-color: #07090f;
+    color: #e8eaf2;
     font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
-/* Professional Dashboard Header */
+
+/* ── Header ── */
 .main-title {
-    font-size: 36px;
-    font-weight: 700;
-    color: #004085; /* Trustworthy Clinical Blue */
-    text-align: center;
-    margin-bottom: 5px;
-    letter-spacing: -0.5px;
-}
-/* Elevated, clean status box */
-.status-box {
-    background-color: #ffffff;
-    border: 1px solid #e0e0e0;
-    border-top: 5px solid #004085;
-    padding: 20px;
-    border-radius: 8px;
-    text-align: center;
-    margin-top: 15px;
-    margin-bottom: 25px;
-    box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.05);
-}
-.status-box h3 {
-    font-size: 20px;
-    color: #495057;
+    font-size: 38px;
     font-weight: 500;
+    color: #e8eaf2;
+    text-align: center;
+    letter-spacing: -0.8px;
+    line-height: 1.18;
+    margin-bottom: 8px;
+}
+.main-title .accent  { color: #6aadff; }
+.main-title .accent2 { color: #3ec97a; }
+.main-eyebrow {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #6aadff;
+    text-align: center;
+    margin-bottom: 8px;
+}
+.scan-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(106,173,255,0.07);
+    border: 0.5px solid rgba(106,173,255,0.25);
+    border-radius: 20px;
+    padding: 6px 16px;
+    font-size: 11px;
+    color: #6aadff;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin: 0 auto 24px;
+    width: fit-content;
+}
+
+/* ── Tech pills ── */
+.pill-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    justify-content: center;
+    margin-bottom: 32px;
+}
+.tech-pill {
+    background: rgba(106,173,255,0.06);
+    border: 0.5px solid rgba(106,173,255,0.2);
+    border-radius: 20px;
+    padding: 5px 13px;
+    font-size: 11px;
+    color: #6aadff;
+    letter-spacing: 0.03em;
+}
+
+/* ── Section dividers ── */
+.section-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 20px 0 14px;
+}
+.section-head .sh-line {
+    flex: 1;
+    height: 0.5px;
+    background: rgba(100,120,255,0.15);
+}
+.section-head span {
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #6670aa;
+    white-space: nowrap;
+}
+
+/* ── Form panel ── */
+.form-panel {
+    background: rgba(255,255,255,0.03);
+    border: 0.5px solid rgba(100,120,255,0.18);
+    border-radius: 14px;
+    padding: 22px;
+    margin-bottom: 16px;
+}
+
+/* ── Status result ── */
+.status-box {
+    background: rgba(255,255,255,0.03);
+    border: 0.5px solid rgba(100,120,255,0.2);
+    border-radius: 14px;
+    padding: 20px 22px;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin: 14px 0;
+}
+.status-bar { width: 3px; min-height: 56px; border-radius: 2px; flex-shrink: 0; }
+.status-bar.stable   { background: #3ec97a; }
+.status-bar.critical { background: #e24b4a; }
+.status-label-sm {
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #6670aa;
+    margin-bottom: 4px;
+}
+.status-disease { font-size: 19px; font-weight: 500; color: #e8eaf2; }
+.status-sub     { font-size: 12px; color: #8890aa; margin-top: 3px; }
+.status-badge   { margin-left: auto; padding: 5px 14px; border-radius: 20px; font-size: 11px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
+.status-badge.stable   { background: rgba(62,201,122,0.1); border: 0.5px solid rgba(62,201,122,0.3); color: #3ec97a; }
+.status-badge.critical { background: rgba(226,75,74,0.1);  border: 0.5px solid rgba(226,75,74,0.3);  color: #e24b4a; }
+
+/* ── Medicine cards ── */
+.med-card {
+    background: rgba(255,255,255,0.025);
+    border: 0.5px solid rgba(100,120,255,0.15);
+    border-left: 2px solid #1a56db;
+    border-radius: 0 9px 9px 0;
+    padding: 14px 16px;
     margin-bottom: 10px;
 }
-.status-box h2 {
-    font-size: 26px;
-    font-weight: 700;
-    margin-top: 0;
+.med-card .drug-name   { font-size: 14px; font-weight: 500; color: #c8d0e8; margin-bottom: 3px; }
+.med-card .drug-reason { font-size: 11px; color: #6670aa; margin-bottom: 5px; }
+.med-card .drug-desc   { font-size: 12px; color: #8890aa; line-height: 1.55; }
+
+/* ── Metric overrides ── */
+div[data-testid="stMetricValue"] { font-size: 22px; font-weight: 500; color: #e8eaf2; }
+div[data-testid="stMetricLabel"] { font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.09em; color: #6670aa; }
+div[data-testid="metric-container"] {
+    background: rgba(255,255,255,0.03) !important;
+    border: 0.5px solid rgba(100,120,255,0.15) !important;
+    border-radius: 10px;
+    padding: 14px !important;
 }
-/* Structured medicine cards */
-.med-card {
-    background-color: #ffffff;
-    padding: 18px;
-    border-radius: 6px;
-    margin-bottom: 15px;
-    border-left: 4px solid #17a2b8; /* Professional Teal */
-    box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.04);
-    border-top: 1px solid #f0f0f0;
-    border-right: 1px solid #f0f0f0;
-    border-bottom: 1px solid #f0f0f0;
-}
-.med-card b {
-    color: #004085;
-    font-size: 16px;
-}
-.med-card small {
-    color: #6c757d;
+
+/* ── Primary button ── */
+.stButton > button {
+    background: #1a56db;
+    color: #e8f0ff;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
     font-weight: 500;
+    padding: 11px 22px;
+    width: 100%;
+    letter-spacing: 0.02em;
 }
-/* Override Streamlit Metric Colors for a cohesive look */
-div[data-testid="stMetricValue"] {
-    color: #004085;
+.stButton > button:hover { background: #1447b8; border: none; }
+
+/* ── Input fields ── */
+.stTextInput input, .stNumberInput input, .stTextArea textarea {
+    background: rgba(255,255,255,0.04) !important;
+    border: 0.5px solid rgba(100,120,255,0.22) !important;
+    border-radius: 7px !important;
+    color: #c8d0e8 !important;
+}
+.stTextInput input:focus, .stNumberInput input:focus, .stTextArea textarea:focus {
+    border-color: rgba(106,173,255,0.5) !important;
+}
+label { color: #6670aa !important; font-size: 11px !important; letter-spacing: 0.07em; text-transform: uppercase; }
+
+/* ── Tab styling ── */
+button[data-baseweb="tab"] { font-size: 12px; color: #6670aa; letter-spacing: 0.02em; }
+button[data-baseweb="tab"][aria-selected="true"] { color: #6aadff; border-bottom-color: #6aadff !important; }
+div[data-testid="stTabs"] { border-bottom: 0.5px solid rgba(100,120,255,0.15); }
+
+/* ── Plotly chart dark override ── */
+.js-plotly-plot .plotly { background: transparent !important; }
+
+/* ── Sidebar ── */
+section[data-testid="stSidebar"] {
+    background: #0c0f1a;
+    border-right: 0.5px solid rgba(100,120,255,0.15);
+}
+
+/* ── Download button ── */
+.stDownloadButton > button {
+    background: transparent;
+    border: 0.5px solid rgba(100,120,255,0.25);
+    color: #8890aa;
+    border-radius: 8px;
+}
+.stDownloadButton > button:hover {
+    border-color: rgba(106,173,255,0.4);
+    color: #c8d0e8;
 }
 </style>
 """, unsafe_allow_html=True)
