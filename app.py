@@ -25,121 +25,119 @@ st.set_page_config(
 # Custom Styling Block
 st.markdown("""
 <style>
-/* 1. Soft, airy SaaS background (very pale lavender/grey) */
+/* 1. App Background - Very faint, cool grey to make white cards pop */
 .stApp {
-    background-color: #fbfbfe;
-    color: #1e293b;
-    font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    background-color: #F9FAFB;
+    color: #101828;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }
 
-/* 2. Fix top spacing */
+/* 2. Fix spacing */
 .block-container {
     padding-top: 3rem !important;
-    padding-bottom: 2rem !important;
-    max-width: 95% !important;
+    padding-bottom: 3rem !important;
+    max-width: 90% !important;
 }
 
-/* 3. Bold, Dark Headline Typography */
+/* 3. Sharp, High-Contrast Title */
 .main-title {
-    font-size: 48px;
+    font-size: 40px;
     font-weight: 800;
-    color: #111827; 
-    text-align: center;
-    margin-bottom: 15px;
+    color: #101828; 
+    text-align: left;
+    margin-bottom: 5px;
     letter-spacing: -1px;
 }
-
-/* 4. Pill-shaped sub-tags (like the image) */
-.pill-tag {
-    display: inline-block;
-    background-color: #f3e8ff;
-    color: #7e22ce;
-    padding: 6px 16px;
-    border-radius: 20px;
-    font-size: 14px;
-    font-weight: 600;
-    margin-bottom: 20px;
-    border: 1px solid #e9d5ff;
+.sub-title {
+    color: #667085;
+    font-size: 16px;
+    margin-bottom: 30px;
+    border-bottom: 1px solid #EAECF0;
+    padding-bottom: 15px;
 }
 
-/* 5. Clean, slightly rounded Inputs */
+/* 4. Crisp, Modern Inputs */
 div[data-baseweb="input"] > div, div[data-baseweb="textarea"] > div {
     background-color: #ffffff !important;
-    border: 1px solid #e2e8f0 !important;
+    border: 1px solid #D0D5DD !important;
     border-radius: 8px !important;
-    box-shadow: 0px 1px 2px rgba(0,0,0,0.02) !important;
+    box-shadow: 0px 1px 2px rgba(16, 24, 40, 0.05) !important;
+    transition: border-color 0.2s ease;
+}
+div[data-baseweb="input"] > div:hover, div[data-baseweb="textarea"] > div:hover {
+    border-color: #98A2B3 !important;
 }
 
-/* 6. Vibrant Purple Pill Button for Execution */
+/* 5. Premium Dark Button (Vercel/Stripe style) */
 div.stButton > button {
-    background-color: #9333ea !important; /* The signature purple */
+    background-color: #101828 !important; /* Almost black */
     color: #ffffff !important;
-    border-radius: 24px !important; /* Fully rounded pill shape */
-    font-weight: 600 !important;
-    padding: 0.6rem 2rem !important;
-    border: none !important;
-    box-shadow: 0px 4px 10px rgba(147, 51, 234, 0.25) !important;
-    transition: all 0.2s ease-in-out;
+    border-radius: 8px !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.3px;
+    padding: 0.5rem 2rem !important;
+    border: 1px solid #101828 !important;
+    box-shadow: 0px 1px 2px rgba(16, 24, 40, 0.05) !important;
+    transition: all 0.2s ease;
 }
 div.stButton > button:hover {
-    background-color: #7e22ce !important;
-    box-shadow: 0px 6px 14px rgba(147, 51, 234, 0.35) !important;
-    transform: translateY(-1px);
+    background-color: #344054 !important;
+    border-color: #344054 !important;
 }
 
-/* 7. Softened Status Box with Purple Accent */
+/* 6. Clean, Shadowed Status Box */
 .status-box {
     background-color: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-top: 4px solid #9333ea;
+    border: 1px solid #EAECF0;
+    border-left: 6px solid #0EA5E9; /* A professional medical cyan accent */
     padding: 24px;
     border-radius: 12px;
-    text-align: center;
+    text-align: left;
     margin-top: 20px;
     margin-bottom: 25px;
-    box-shadow: 0px 10px 25px rgba(0, 0, 0, 0.03);
+    box-shadow: 0px 4px 8px -2px rgba(16, 24, 40, 0.1), 0px 2px 4px -2px rgba(16, 24, 40, 0.06);
 }
 .status-box h3 {
-    font-size: 18px;
-    color: #6b7280;
+    font-size: 16px;
+    color: #667085;
     font-weight: 600;
-    margin-bottom: 8px;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 .status-box h2 {
-    font-size: 26px;
+    font-size: 28px;
     font-weight: 700;
-    color: #111827;
+    color: #101828;
     margin-top: 0;
 }
 
-/* 8. Medicine Cards */
+/* 7. Flat Minimalist Medicine Cards */
 .med-card {
     background-color: #ffffff;
-    padding: 18px;
-    border-radius: 10px;
+    padding: 20px;
+    border-radius: 8px;
     margin-bottom: 12px;
-    border-left: 4px solid #c084fc; /* Soft purple */
-    box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.04);
-    border-top: 1px solid #f8fafc;
-    border-right: 1px solid #f8fafc;
-    border-bottom: 1px solid #f8fafc;
+    border: 1px solid #EAECF0;
+    box-shadow: 0px 1px 3px rgba(16, 24, 40, 0.1);
 }
 .med-card b {
-    color: #111827;
+    color: #101828;
     font-size: 16px;
 }
 .med-card small {
-    color: #64748b;
+    color: #475467;
     font-weight: 500;
 }
 
-/* 9. Metric Labels */
+/* 8. Fix Metric Labels */
 div[data-testid="stMetricLabel"] {
-    color: #6b7280 !important;
+    color: #667085 !important;
     font-weight: 500 !important;
 }
 div[data-testid="stMetricValue"] {
-    color: #111827 !important;
+    color: #101828 !important;
+    font-weight: 700 !important;
 }
 </style>
 """, unsafe_allow_html=True)
