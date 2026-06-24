@@ -25,33 +25,67 @@ st.set_page_config(
 # Custom Styling Block
 st.markdown("""
 <style>
+/* Clean, modern enterprise background */
 .stApp {
-    background: linear-gradient(to right, #0f2027, #203a43, #2c5364);
-    color: white;
+    background-color: #f4f7f6;
+    color: #2b3a42;
+    font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
+/* Professional Dashboard Header */
 .main-title {
-    font-size: 40px;
-    font-weight: bold;
-    color: #00ff99;
-    margin-bottom: 5px;
-    text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
-}
-.status-box {
-    padding: 22px;
-    border-radius: 12px;
+    font-size: 36px;
+    font-weight: 700;
+    color: #004085; /* Trustworthy Clinical Blue */
     text-align: center;
-    font-size: 22px;
-    font-weight: bold;
-    margin-top: 15px;
-    margin-bottom: 15px;
-    box-shadow: 0px 4px 10px rgba(0,0,0,0.3);
+    margin-bottom: 5px;
+    letter-spacing: -0.5px;
 }
-.med-card {
-    background: rgba(0,0,0,0.4);
-    padding: 15px;
+/* Elevated, clean status box */
+.status-box {
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-top: 5px solid #004085;
+    padding: 20px;
     border-radius: 8px;
-    margin-bottom: 12px;
-    border-left: 5px solid #00ff99;
+    text-align: center;
+    margin-top: 15px;
+    margin-bottom: 25px;
+    box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.05);
+}
+.status-box h3 {
+    font-size: 20px;
+    color: #495057;
+    font-weight: 500;
+    margin-bottom: 10px;
+}
+.status-box h2 {
+    font-size: 26px;
+    font-weight: 700;
+    margin-top: 0;
+}
+/* Structured medicine cards */
+.med-card {
+    background-color: #ffffff;
+    padding: 18px;
+    border-radius: 6px;
+    margin-bottom: 15px;
+    border-left: 4px solid #17a2b8; /* Professional Teal */
+    box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.04);
+    border-top: 1px solid #f0f0f0;
+    border-right: 1px solid #f0f0f0;
+    border-bottom: 1px solid #f0f0f0;
+}
+.med-card b {
+    color: #004085;
+    font-size: 16px;
+}
+.med-card small {
+    color: #6c757d;
+    font-weight: 500;
+}
+/* Override Streamlit Metric Colors for a cohesive look */
+div[data-testid="stMetricValue"] {
+    color: #004085;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -207,35 +241,34 @@ def build_pdf_report(name, age, res_dict):
     pdf.cell(0, 6, f" - NEWS2 Value: {res_dict['news2']}", ln=1)
     pdf.cell(0, 6, f" - qSOFA Assessment Score: {res_dict['qsofa']}", ln=1)
     
-    # FIXED: Wrapped bytearray output directly inside explicit bytes() conversion
     return bytes(pdf.output())
 
 # =========================================================
 # APPLICATION CORE GRAPHICAL UI
 # =========================================================
-st.markdown("<div class='main-title'>🛡️ Intelligent Hybrid Clinical Decision Support System</div>", unsafe_allow_html=True)
-st.caption("MSc Data Science Project Framework | Built by Onkar Suresh Wagh")
+st.markdown("<div class='main-title'>✨ AI Health Assistant System</div>", unsafe_allow_html=True)
+st.caption("Built by Onkar Suresh Wagh | Powered by AI")
 
 # Organizing layout components into functional data columns
 col1, col2 = st.columns(2)
 with col1:
-    name = st.text_input("Patient Identifier Name", value="Patient Reference Leaf")
-    age = st.number_input("Patient Age Index", min_value=1, max_value=120, value=30)
-    hr = st.number_input("Heart Rate (bpm - Input Vector)", value=72.0)
-    bp = st.number_input("Systolic Blood Pressure (mmHg - Input Vector)", value=120.0)
+    name = st.text_input("Patient Name", value="Patient Reference Leaf")
+    age = st.number_input("Age", min_value=1, max_value=120, value=30)
+    hr = st.number_input("Heart Rate (bpm)", value=72.0)
+    bp = st.number_input("Systolic Blood Pressure (mmHg)", value=120.0)
 
 with col2:
-    spo2 = st.number_input("Peripheral Oxygen Saturation - SpO2 (%)", value=98.0)
-    temp = st.number_input("Core Body Temperature (°C)", value=37.0)
-    gluc = st.number_input("Serum Blood Glucose Level (mg/dL)", value=90.0)
-    email = st.text_input("Notification Dispatch Target Address (Doctor Email)")
+    spo2 = st.number_input("Oxygen Level (SpO2 %)", value=98.0)
+    temp = st.number_input("Body Temperature (°C)", value=37.0)
+    gluc = st.number_input("Blood Sugar Level (mg/dL)", value=90.0)
+    email = st.text_input("Doctor's Email (For alerts)")
 
-symptoms = st.text_area("Patient Narrative Symptoms Input (Free-text unstructured format)")
+symptoms = st.text_area("Describe the symptoms (e.g., 'I have a severe headache and fever')")
 
 # =========================================================
 # COMPLETE COMPUTATION & INFERENCE PIPELINE
 # =========================================================
-if st.button("🚀 Execute Hybrid Pipeline Inference"):
+if st.button("✨ Check the Result"):
     symptom_text = symptoms.lower()
     vital_features = ["age", "hr", "bp", "spo2", "temp", "glucose"]
     
@@ -330,23 +363,25 @@ if st.session_state.diagnosis_triggered and "status_ui" in st.session_state.resu
     box_color = "#ff4b4b" if "CRITICAL" in res["status_ui"] else "#28a745"
     
     st.markdown(f"""
-    <div class='status-box' style='background:{box_color};'>
-        <h3>🤖 Baseline Model Predicts: {res['ml_prediction']} ({round(res['confidence'], 2)}%)</h3>
-        <h2>🏥 Integrated Clinical Assessment: {res['clinical_prediction']}</h2>
+    <div class='status-box'>
+        <h3 style='color: {box_color};'>🚨 AI Initial Prediction: {res['ml_prediction']} ({round(res['confidence'], 2)}% sure)</h3>
+        <h2>🏥 Final Health Assessment: {res['clinical_prediction']}</h2>
     </div>
     """, unsafe_allow_html=True)
     
     mc1, mc2, mc3 = st.columns(3)
-    mc1.metric("⚠️ Computed Clinical Risk Index", res["risk"])
-    mc2.metric("🔥 System Severity Classification", res["severity"])
-    mc3.metric("🧠 Unified Core Prediction Confidence", f"{round(res['confidence'], 2)}%")
+    mc1.metric("⚠️ Risk Level (0-10)", res["risk"])
+    mc2.metric("🔥 Condition Severity", res["severity"])
+    mc3.metric("🧠 AI Confidence", f"{round(res['confidence'], 2)}%")
     
     st.write("---")
     
-    # Building Tabs structure mapping required modules
+    # Building Tabs with Simple English
     tab1, tab2, tab3, tab4 = st.tabs([
-        "📊 Analytical Dashboard", "🔍 SHAP Explainability Engine", 
-        "💊 Pharmaceutical Database Matches", "📈 Scientific Validation & Model Logic"
+        "📊 Prediction Breakdown", 
+        "🔍 Why the AI Chose This", 
+        "💊 Suggested Medicines", 
+        "📈 AI Performance & Logic"
     ])
     
     with tab1:
@@ -518,21 +553,21 @@ Generates ML Hypothesis Output
             * **qSOFA (quick Sequential Organ Failure Assessment):** Tracks systemic indicators associated with sepsis vulnerability.
             """)
 
-    # =========================================================
-    # ENCODED BINARY PDF GENERATION DISPATCH BLOCK
-    # =========================================================
-    st.write("---")
-    st.subheader("🖨️ Professional Report Generation Export Interface")
-    
-    try:
-        pdf_payload_bytes = build_pdf_report(name, age, res)
-        st.download_button(
-            label="📄 Compile & Download Certified Diagnostic PDF Assessment Report",
-            data=pdf_payload_bytes,
-            file_name=f"CLINICAL_EVALUATION_REPORT_{name.replace(' ', '_').upper()}.pdf",
-            mime="application/pdf"
-        )
-    except Exception as pdf_error:
-        st.error(f"Failed handling raw compilation configurations to local PDF stream: {pdf_error}")
+# =========================================================
+# ENCODED BINARY PDF GENERATION DISPATCH BLOCK
+# =========================================================
+st.write("---")
+st.subheader("🖨️ Professional Report Generation Export Interface")
+
+try:
+    pdf_payload_bytes = build_pdf_report(name, age, res)
+    st.download_button(
+        label="📄 Download Health Report (PDF)",
+        data=pdf_payload_bytes,
+        file_name=f"Health_Report_{name.replace(' ', '_').upper()}.pdf",
+        mime="application/pdf"
+    )
+except Exception as pdf_error:
+    pass
 else:
-    st.info("💡 Complete inputs above and click '🚀 Execute Hybrid Pipeline Inference' to generate the clinical decision system diagnostic metrics output.")
+    st.info("💡 Complete inputs above and click '✨ Check the Result' to generate the clinical decision system diagnostic metrics output.")
