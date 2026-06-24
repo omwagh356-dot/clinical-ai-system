@@ -25,120 +25,147 @@ st.set_page_config(
 # Custom Styling Block
 st.markdown("""
 <style>
-/* 1. App Background - Very faint, cool grey to make white cards pop */
+/* ── Base ── */
 .stApp {
-    background-color: #F9FAFB;
-    color: #101828;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    background-color: #f7f8fa;
+    color: #1a1a1a;
+    font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
 
-/* 2. Fix spacing */
-.block-container {
-    padding-top: 3rem !important;
-    padding-bottom: 3rem !important;
-    max-width: 90% !important;
-}
-
-/* 3. Sharp, High-Contrast Title */
+/* ── App header ── */
 .main-title {
-    font-size: 40px;
-    font-weight: 800;
-    color: #101828; 
-    text-align: left;
-    margin-bottom: 5px;
-    letter-spacing: -1px;
+    font-size: 22px;
+    font-weight: 500;
+    color: #1a1a1a;
+    text-align: center;
+    margin-bottom: 4px;
+    letter-spacing: -0.2px;
 }
-.sub-title {
-    color: #667085;
-    font-size: 16px;
-    margin-bottom: 30px;
-    border-bottom: 1px solid #EAECF0;
-    padding-bottom: 15px;
-}
-
-/* 4. Crisp, Modern Inputs */
-div[data-baseweb="input"] > div, div[data-baseweb="textarea"] > div {
-    background-color: #ffffff !important;
-    border: 1px solid #D0D5DD !important;
-    border-radius: 8px !important;
-    box-shadow: 0px 1px 2px rgba(16, 24, 40, 0.05) !important;
-    transition: border-color 0.2s ease;
-}
-div[data-baseweb="input"] > div:hover, div[data-baseweb="textarea"] > div:hover {
-    border-color: #98A2B3 !important;
+.main-eyebrow {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #888780;
+    text-align: center;
+    margin-bottom: 6px;
 }
 
-/* 5. Premium Dark Button (Vercel/Stripe style) */
-div.stButton > button {
-    background-color: #101828 !important; /* Almost black */
-    color: #ffffff !important;
-    border-radius: 8px !important;
-    font-weight: 500 !important;
-    letter-spacing: 0.3px;
-    padding: 0.5rem 2rem !important;
-    border: 1px solid #101828 !important;
-    box-shadow: 0px 1px 2px rgba(16, 24, 40, 0.05) !important;
-    transition: all 0.2s ease;
-}
-div.stButton > button:hover {
-    background-color: #344054 !important;
-    border-color: #344054 !important;
-}
-
-/* 6. Clean, Shadowed Status Box */
+/* ── Status box (diagnosis result) ── */
 .status-box {
     background-color: #ffffff;
-    border: 1px solid #EAECF0;
-    border-left: 6px solid #0EA5E9; /* A professional medical cyan accent */
-    padding: 24px;
+    border: 0.5px solid #d3d1c7;
     border-radius: 12px;
-    text-align: left;
-    margin-top: 20px;
-    margin-bottom: 25px;
-    box-shadow: 0px 4px 8px -2px rgba(16, 24, 40, 0.1), 0px 2px 4px -2px rgba(16, 24, 40, 0.06);
+    padding: 20px 24px;
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    margin: 16px 0;
 }
-.status-box h3 {
-    font-size: 16px;
-    color: #667085;
-    font-weight: 600;
-    margin-bottom: 4px;
+.status-bar {
+    width: 4px;
+    min-height: 56px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+.status-bar.stable  { background: #1D9E75; }
+.status-bar.critical { background: #E24B4A; }
+.status-label-small {
+    font-size: 11px;
+    font-weight: 500;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.08em;
+    color: #888780;
+    margin-bottom: 4px;
 }
-.status-box h2 {
-    font-size: 28px;
-    font-weight: 700;
-    color: #101828;
-    margin-top: 0;
+.status-disease {
+    font-size: 20px;
+    font-weight: 500;
+    color: #1a1a1a;
+    margin-bottom: 2px;
+}
+.status-sub {
+    font-size: 13px;
+    color: #5f5e5a;
+}
+.status-badge {
+    margin-left: auto;
+    padding: 5px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    align-self: center;
+}
+.status-badge.stable   { background: #EAF3DE; color: #3B6D11; }
+.status-badge.critical { background: #FCEBEB; color: #A32D2D; }
+
+/* ── Section label ── */
+.section-label {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #888780;
+    margin-bottom: 12px;
+    margin-top: 8px;
 }
 
-/* 7. Flat Minimalist Medicine Cards */
+/* ── Medicine cards ── */
 .med-card {
     background-color: #ffffff;
-    padding: 20px;
-    border-radius: 8px;
-    margin-bottom: 12px;
-    border: 1px solid #EAECF0;
-    box-shadow: 0px 1px 3px rgba(16, 24, 40, 0.1);
+    border: 0.5px solid #d3d1c7;
+    border-left: 2px solid #1D9E75;
+    border-radius: 0 8px 8px 0;
+    padding: 14px 16px;
+    margin-bottom: 10px;
 }
-.med-card b {
-    color: #101828;
-    font-size: 16px;
-}
-.med-card small {
-    color: #475467;
+.med-card .drug-name {
+    font-size: 14px;
     font-weight: 500;
+    color: #1a1a1a;
+    margin-bottom: 3px;
+}
+.med-card .drug-reason {
+    font-size: 12px;
+    color: #888780;
+    margin-bottom: 6px;
+}
+.med-card .drug-desc {
+    font-size: 13px;
+    color: #444441;
+    line-height: 1.55;
 }
 
-/* 8. Fix Metric Labels */
-div[data-testid="stMetricLabel"] {
-    color: #667085 !important;
-    font-weight: 500 !important;
-}
+/* ── Streamlit metric override ── */
 div[data-testid="stMetricValue"] {
-    color: #101828 !important;
-    font-weight: 700 !important;
+    font-size: 22px;
+    font-weight: 500;
+    color: #1a1a1a;
 }
+div[data-testid="stMetricLabel"] {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: #888780;
+}
+div[data-testid="stMetricDelta"] { display: none; }
+
+/* ── Override heavy Streamlit defaults ── */
+.stButton > button {
+    background: #185FA5;
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 10px 20px;
+    width: 100%;
+    letter-spacing: 0.02em;
+}
+.stButton > button:hover { background: #0C447C; }
 </style>
 """, unsafe_allow_html=True)
 # Instantiating persistent state values to defeat the Streamlit interaction refresh bug
