@@ -25,97 +25,107 @@ st.set_page_config(
 # Custom Styling Block
 st.markdown("""
 <style>
-/* 1. Reduce the massive default top whitespace */
-.block-container {
-    padding-top: 2rem !important;
-    padding-bottom: 2rem !important;
-    max-width: 95% !important;
-}
-
-/* 2. Clean, modern enterprise background */
+/* 1. Soft, airy SaaS background (very pale lavender/grey) */
 .stApp {
-    background-color: #f8f9fc;
+    background-color: #fbfbfe;
     color: #1e293b;
     font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
 
-/* 3. Professional Dashboard Header */
+/* 2. Fix top spacing */
+.block-container {
+    padding-top: 3rem !important;
+    padding-bottom: 2rem !important;
+    max-width: 95% !important;
+}
+
+/* 3. Bold, Dark Headline Typography */
 .main-title {
-    font-size: 34px;
+    font-size: 48px;
     font-weight: 800;
-    color: #0f172a; 
+    color: #111827; 
     text-align: center;
-    margin-bottom: 5px;
-    letter-spacing: -0.5px;
+    margin-bottom: 15px;
+    letter-spacing: -1px;
 }
 
-/* 4. Force Input Fields to be crisp, white, and clearly defined */
-div[data-baseweb="input"] {
-    background-color: #ffffff !important;
-    border: 1px solid #cbd5e1 !important;
-    border-radius: 6px !important;
-    box-shadow: 0px 1px 2px rgba(0,0,0,0.03) !important;
-}
-div[data-baseweb="textarea"] {
-    background-color: #ffffff !important;
-    border: 1px solid #cbd5e1 !important;
-    border-radius: 6px !important;
+/* 4. Pill-shaped sub-tags (like the image) */
+.pill-tag {
+    display: inline-block;
+    background-color: #f3e8ff;
+    color: #7e22ce;
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 20px;
+    border: 1px solid #e9d5ff;
 }
 
-/* 5. Style the primary 'Check Result' button so it looks clickable and premium */
+/* 5. Clean, slightly rounded Inputs */
+div[data-baseweb="input"] > div, div[data-baseweb="textarea"] > div {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 8px !important;
+    box-shadow: 0px 1px 2px rgba(0,0,0,0.02) !important;
+}
+
+/* 6. Vibrant Purple Pill Button for Execution */
 div.stButton > button {
-    background-color: #004085 !important;
+    background-color: #9333ea !important; /* The signature purple */
     color: #ffffff !important;
-    border-radius: 6px !important;
+    border-radius: 24px !important; /* Fully rounded pill shape */
     font-weight: 600 !important;
-    padding: 0.5rem 1.5rem !important;
+    padding: 0.6rem 2rem !important;
     border: none !important;
-    box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1) !important;
+    box-shadow: 0px 4px 10px rgba(147, 51, 234, 0.25) !important;
     transition: all 0.2s ease-in-out;
 }
 div.stButton > button:hover {
-    background-color: #002752 !important;
-    box-shadow: 0px 6px 10px rgba(0, 0, 0, 0.15) !important;
+    background-color: #7e22ce !important;
+    box-shadow: 0px 6px 14px rgba(147, 51, 234, 0.35) !important;
     transform: translateY(-1px);
 }
 
-/* 6. Elevated, clean status box for the results */
+/* 7. Softened Status Box with Purple Accent */
 .status-box {
     background-color: #ffffff;
     border: 1px solid #e2e8f0;
-    border-top: 5px solid #004085;
+    border-top: 4px solid #9333ea;
     padding: 24px;
-    border-radius: 8px;
+    border-radius: 12px;
     text-align: center;
     margin-top: 20px;
     margin-bottom: 25px;
-    box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.05);
+    box-shadow: 0px 10px 25px rgba(0, 0, 0, 0.03);
 }
 .status-box h3 {
     font-size: 18px;
-    color: #475569;
+    color: #6b7280;
     font-weight: 600;
     margin-bottom: 8px;
 }
 .status-box h2 {
-    font-size: 24px;
+    font-size: 26px;
     font-weight: 700;
-    color: #0f172a;
+    color: #111827;
     margin-top: 0;
 }
 
-/* 7. Structured medicine cards */
+/* 8. Medicine Cards */
 .med-card {
     background-color: #ffffff;
-    padding: 16px;
-    border-radius: 8px;
+    padding: 18px;
+    border-radius: 10px;
     margin-bottom: 12px;
-    border-left: 4px solid #0284c7;
-    box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.04);
-    border: 1px solid #e2e8f0;
+    border-left: 4px solid #c084fc; /* Soft purple */
+    box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.04);
+    border-top: 1px solid #f8fafc;
+    border-right: 1px solid #f8fafc;
+    border-bottom: 1px solid #f8fafc;
 }
 .med-card b {
-    color: #0f172a;
+    color: #111827;
     font-size: 16px;
 }
 .med-card small {
@@ -123,17 +133,16 @@ div.stButton > button:hover {
     font-weight: 500;
 }
 
-/* 8. Fix Streamlit Metric label colors */
+/* 9. Metric Labels */
 div[data-testid="stMetricLabel"] {
-    color: #475569 !important;
-    font-weight: 600 !important;
+    color: #6b7280 !important;
+    font-weight: 500 !important;
 }
 div[data-testid="stMetricValue"] {
-    color: #0f172a !important;
+    color: #111827 !important;
 }
 </style>
 """, unsafe_allow_html=True)
-
 # Instantiating persistent state values to defeat the Streamlit interaction refresh bug
 if "diagnosis_triggered" not in st.session_state:
     st.session_state.diagnosis_triggered = False
