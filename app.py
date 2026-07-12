@@ -1,3 +1,22 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+import joblib
+import os
+import smtplib
+import shap
+import matplotlib.pyplot as plt
+import seaborn as sns
+from email.message import EmailMessage
+from fpdf import FPDF
+from sklearn.metrics import roc_curve, auc, confusion_matrix
+
+# =========================================================
+# PAGE CONFIGURATION & ARCHITECTURE INITIALIZATION
+# =========================================================
+
 st.set_page_config(
     page_title="AI Health Assistant",
     layout="wide",
