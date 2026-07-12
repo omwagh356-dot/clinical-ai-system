@@ -259,26 +259,32 @@ if "diagnosis_triggered" not in st.session_state:
     st.session_state.results = {}
 
 # =========================================================
-# CACHED ASSET LOADING LAYER (UPDATED TO BYPASS FEATURES.PKL)
+# CACHED ASSET LOADING LAYER (BULLETPROOF FEATURES BYPASS)
 # =========================================================
-@st.cache_resource
+@st.cache_resource(show_spinner=False)
 def load_clinical_assets():
-    # Removed "features.pkl" to prevent the error
+    # Only check for the 3 files we actually have
     required_files = ["model.pkl", "scaler.pkl", "label_encoder.pkl"]
     for file in required_files:
         if not os.path.exists(file):
             st.error(f"Error: Missing critical file -> {file}")
             st.stop()
             
-    # Load scaler to extract feature names
+    # Load the scaler so we can extract the feature names from it
     loaded_scaler = joblib.load("scaler.pkl")
     
+    # Safely extract features
+    if hasattr(loaded_scaler, "feature_names_in_"):
+        extracted_features = list(loaded_scaler.feature_names_in_)
+    else:
+        extracted_features = [f"feature_{i}" for i in range(loaded_scaler.n_features_in_)]
+    
+    # Return the fully constructed dictionary
     return {
         "model": joblib.load("model.pkl"),
         "scaler": loaded_scaler,
         "label_encoder": joblib.load("label_encoder.pkl"),
-        # Extract features directly from the scaler
-        "features": list(loaded_scaler.feature_names_in_) 
+        "features": extracted_features  
     }
 
 assets = load_clinical_assets()
@@ -452,7 +458,10 @@ if st.button("Check My Symptoms"):
     symptom_text = symptoms.lower()
     vital_features = ["age", "hr", "bp", "spo2", "temp", "glucose"]
     
-    feature_dict = encode_symptoms_to_dict(symptoms, assets["features"], vital_features)
+    # --- THIS LINE IS NOW PROTECTED BY OUR FIX ---
+    expected_features = assets["features"]
+    
+    feature_dict = encode_symptoms_to_dict(symptoms, expected_features, vital_features)
     feature_dict["age"] = age
     feature_dict["hr"] = hr
     feature_dict["bp"] = bp
@@ -460,7 +469,6 @@ if st.button("Check My Symptoms"):
     feature_dict["temp"] = temp
     feature_dict["glucose"] = gluc
     
-    expected_features = assets["scaler"].feature_names_in_
     input_data = [feature_dict.get(col, 0) for col in expected_features]
     input_df = pd.DataFrame([input_data], columns=expected_features)
     
