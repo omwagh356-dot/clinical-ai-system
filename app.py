@@ -286,7 +286,11 @@ def load_medicine_db():
             df = df.rename(columns={"res": "Reason"})
         df["Reason"] = df["Reason"].astype(str)
         return df
-    except Exception:
+    except FileNotFoundError:
+        st.warning("⚠️ 'Medicine_description.xlsx' not found. Medicine recommendations will be disabled.")
+        return pd.DataFrame(columns=["Drug_Name", "Reason", "Description"])
+    except Exception as e:
+        st.error(f"Error loading medicines: {e}")
         return pd.DataFrame(columns=["Drug_Name", "Reason", "Description"])
 
 med_db = load_medicine_db()
@@ -598,20 +602,29 @@ if st.session_state.diagnosis_triggered:
     with tab3:
         st.subheader("Related Medicines Info")
         st.caption("Common medicines generally associated with this condition (Do not take without a doctor's prescription).")
-        query_val = res["clinical_prediction"].lower()
-        matched_meds = med_db[med_db["Reason"].str.lower().str.contains(query_val, na=False)]
+        
+        # Break the prediction into individual words for a broader search
+        prediction_words = res["clinical_prediction"].lower().split()
+        
+        # Create a boolean mask to check if ANY of the words exist in the 'Reason' column
+        mask = med_db["Reason"].str.lower().apply(
+            lambda x: any(word in str(x) for word in prediction_words if len(word) > 3) 
+            # Note: len(word) > 3 ignores small words like "high" or "the"
+        )
+        
+        matched_meds = med_db[mask]
         
         if not matched_meds.empty:
             for _, row in matched_meds.head(5).iterrows():
                 st.markdown(f"""
                 <div class='med-card'>
-                    <div class='drug-name'>{row['Drug_Name']}</div>
-                    <div class='drug-reason'>Usually used for: {row['Reason']}</div>
-                    <div class='drug-desc'>{row['Description']}</div>
+                    <div class='drug-name'>{row.get('Drug_Name', 'Unknown')}</div>
+                    <div class='drug-reason'>Usually used for: {row.get('Reason', '')}</div>
+                    <div class='drug-desc'>{row.get('Description', 'No description available.')}</div>
                 </div>
                 """, unsafe_allow_html=True)
         else:
-            st.info("No common medication records found for this specific condition in our database.")
+            st.info(f"No common medication records found for '{res['clinical_prediction']}' in our database.")
 
     with tab4:
         left_col, right_col = st.columns([3, 2])
