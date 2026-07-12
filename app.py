@@ -1,23 +1,5 @@
-import streamlit as st
-import pandas as pd
-import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
-import joblib
-import os
-import smtplib
-import shap
-import matplotlib.pyplot as plt
-import seaborn as sns
-from email.message import EmailMessage
-from fpdf import FPDF
-from sklearn.metrics import roc_curve, auc, confusion_matrix
-
-# =========================================================
-# PAGE CONFIGURATION & ARCHITECTURE INITIALIZATION
-# =========================================================
 st.set_page_config(
-    page_title="Clinical AI System",
+    page_title="AI Health Assistant",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -25,38 +7,235 @@ st.set_page_config(
 # Custom Styling Block
 st.markdown("""
 <style>
+/* ── Base ── */
 .stApp {
-    background: linear-gradient(to right, #0f2027, #203a43, #2c5364);
-    color: white;
+    background-color: #07090f;
+    color: #e8eaf2;
+    font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
+
+/* ── Header ── */
 .main-title {
-    font-size: 40px;
-    font-weight: bold;
-    color: #00ff99;
-    margin-bottom: 5px;
-    text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
-}
-.status-box {
-    padding: 22px;
-    border-radius: 12px;
+    font-size: 38px;
+    font-weight: 500;
+    color: #e8eaf2;
     text-align: center;
-    font-size: 22px;
-    font-weight: bold;
-    margin-top: 15px;
-    margin-bottom: 15px;
-    box-shadow: 0px 4px 10px rgba(0,0,0,0.3);
+    letter-spacing: -0.8px;
+    line-height: 1.18;
+    margin-bottom: 8px;
 }
+.main-title .accent  { color: #6aadff; }
+.main-title .accent2 { color: #3ec97a; }
+.main-eyebrow {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #6aadff;
+    text-align: center;
+    margin-bottom: 8px;
+}
+.scan-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(106,173,255,0.07);
+    border: 0.5px solid rgba(106,173,255,0.25);
+    border-radius: 20px;
+    padding: 6px 16px;
+    font-size: 11px;
+    color: #6aadff;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin: 0 auto 24px;
+    width: fit-content;
+}
+
+/* ── Tech pills ── */
+.pill-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    justify-content: center;
+    margin-bottom: 32px;
+}
+.tech-pill {
+    background: rgba(106,173,255,0.06);
+    border: 0.5px solid rgba(106,173,255,0.2);
+    border-radius: 20px;
+    padding: 5px 13px;
+    font-size: 11px;
+    color: #6aadff;
+    letter-spacing: 0.03em;
+}
+
+/* ── Section dividers ── */
+.section-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 20px 0 14px;
+}
+.section-head .sh-line {
+    flex: 1;
+    height: 0.5px;
+    background: rgba(100,120,255,0.15);
+}
+.section-head span {
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #6670aa;
+    white-space: nowrap;
+}
+
+/* ── Form panel ── */
+.form-panel {
+    background: rgba(255,255,255,0.03);
+    border: 0.5px solid rgba(100,120,255,0.18);
+    border-radius: 14px;
+    padding: 22px;
+    margin-bottom: 16px;
+}
+
+/* ── Status result ── */
+.status-box {
+    background: rgba(255,255,255,0.03);
+    border: 0.5px solid rgba(100,120,255,0.2);
+    border-radius: 14px;
+    padding: 20px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    margin: 14px 0;
+}
+.status-bar { width: 3px; min-height: 56px; border-radius: 2px; flex-shrink: 0; }
+.status-bar.stable   { background: #3ec97a; }
+.status-bar.critical { background: #e24b4a; }
+.status-label-sm {
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #6670aa;
+    margin-bottom: 4px;
+}
+.status-disease { font-size: 19px; font-weight: 500; color: #e8eaf2; }
+.status-sub     { font-size: 12px; color: #8890aa; margin-top: 3px; }
+.status-badge   { margin-left: auto; padding: 5px 14px; border-radius: 20px; font-size: 11px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
+.status-badge.stable   { background: rgba(62,201,122,0.1); border: 0.5px solid rgba(62,201,122,0.3); color: #3ec97a; }
+.status-badge.critical { background: rgba(226,75,74,0.1);  border: 0.5px solid rgba(226,75,74,0.3);  color: #e24b4a; }
+
+/* ── Medicine cards ── */
 .med-card {
-    background: rgba(0,0,0,0.4);
-    padding: 15px;
+    background: rgba(255,255,255,0.025);
+    border: 0.5px solid rgba(100,120,255,0.15);
+    border-left: 2px solid #1a56db;
+    border-radius: 0 9px 9px 0;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+}
+.med-card .drug-name   { font-size: 14px; font-weight: 500; color: #c8d0e8; margin-bottom: 3px; }
+.med-card .drug-reason { font-size: 11px; color: #6670aa; margin-bottom: 5px; }
+.med-card .drug-desc   { font-size: 12px; color: #8890aa; line-height: 1.55; }
+
+/* ── Metric overrides ── */
+div[data-testid="stMetricValue"] { font-size: 22px; font-weight: 500; color: #e8eaf2; }
+div[data-testid="stMetricLabel"] { font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.09em; color: #6670aa; }
+div[data-testid="metric-container"] {
+    background: rgba(255,255,255,0.03) !important;
+    border: 0.5px solid rgba(100,120,255,0.15) !important;
+    border-radius: 10px;
+    padding: 14px !important;
+}
+
+/* ── Primary button ── */
+.stButton > button {
+    background: #1a56db;
+    color: #e8f0ff;
+    border: none;
     border-radius: 8px;
-    margin-bottom: 12px;
-    border-left: 5px solid #00ff99;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 11px 22px;
+    width: 100%;
+    letter-spacing: 0.02em;
+}
+.stButton > button:hover { background: #1447b8; border: none; }
+
+/* ── Input fields ── */
+.stTextInput input, .stNumberInput input, .stTextArea textarea {
+    background: rgba(255,255,255,0.04) !important;
+    border: 0.5px solid rgba(100,120,255,0.22) !important;
+    border-radius: 7px !important;
+    color: #c8d0e8 !important;
+}
+.stTextInput input:focus, .stNumberInput input:focus, .stTextArea textarea:focus {
+    border-color: rgba(106,173,255,0.5) !important;
+}
+label { color: #6670aa !important; font-size: 11px !important; letter-spacing: 0.07em; text-transform: uppercase; }
+
+/* ── Tab styling ── */
+button[data-baseweb="tab"] { font-size: 12px; color: #6670aa; letter-spacing: 0.02em; }
+button[data-baseweb="tab"][aria-selected="true"] { color: #6aadff; border-bottom-color: #6aadff !important; }
+div[data-testid="stTabs"] { border-bottom: 0.5px solid rgba(100,120,255,0.15); }
+
+/* ── Plotly chart dark override ── */
+.js-plotly-plot .plotly { background: transparent !important; }
+
+/* ── Sidebar ── */
+section[data-testid="stSidebar"] {
+    background: #0c0f1a;
+    border-right: 0.5px solid rgba(100,120,255,0.15);
+}
+
+/* ── Download button ── */
+.stDownloadButton > button {
+    background: transparent;
+    border: 0.5px solid rgba(100,120,255,0.25);
+    color: #8890aa;
+    border-radius: 8px;
+}
+.stDownloadButton > button:hover {
+    border-color: rgba(106,173,255,0.4);
+    color: #c8d0e8;
+}
+
+/* ── Disclaimer Box ── */
+.disclaimer-box {
+    background-color: rgba(226, 75, 74, 0.1);
+    border: 1px solid rgba(226, 75, 74, 0.3);
+    border-left: 4px solid #e24b4a;
+    padding: 16px;
+    border-radius: 8px;
+    margin-bottom: 25px;
+}
+.disclaimer-box p {
+    color: #ff9999;
+    font-size: 14px;
+    font-weight: 400;
+    margin: 0;
+    line-height: 1.5;
+}
+.sub-title {
+    text-align: center;
+    color: #8890aa;
+    font-size: 16px;
+    margin-bottom: 30px;
+    line-height: 1.5;
+}
+.student-info {
+    font-size: 14px;
+    color: #6aadff;
+    font-weight: bold;
+    margin-top: 10px;
+    display: block;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# Instantiating persistent state values to defeat the Streamlit interaction refresh bug
+# Instantiating persistent state values
 if "diagnosis_triggered" not in st.session_state:
     st.session_state.diagnosis_triggered = False
     st.session_state.results = {}
