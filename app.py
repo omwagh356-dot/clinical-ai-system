@@ -284,14 +284,17 @@ def load_medicine_db():
         df.columns = [c.strip() for c in df.columns]
         if "res" in df.columns:
             df = df.rename(columns={"res": "Reason"})
-        df["Reason"] = df["Reason"].astype(str)
+        # Normalize once at load time so category lookups are reliable
+        # regardless of stray whitespace/casing in the source file.
+        df["Reason"] = df["Reason"].astype(str).str.strip()
+        df["Reason_norm"] = df["Reason"].str.lower()
         return df
     except FileNotFoundError:
         st.warning("⚠️ 'Medicine_description.xlsx' not found. Medicine recommendations will be disabled.")
-        return pd.DataFrame(columns=["Drug_Name", "Reason", "Description"])
+        return pd.DataFrame(columns=["Drug_Name", "Reason", "Reason_norm", "Description"])
     except Exception as e:
         st.error(f"Error loading medicines: {e}")
-        return pd.DataFrame(columns=["Drug_Name", "Reason", "Description"])
+        return pd.DataFrame(columns=["Drug_Name", "Reason", "Reason_norm", "Description"])
 
 med_db = load_medicine_db()
 
@@ -305,6 +308,78 @@ def load_base_validation_pool():
     return list(base_true), list(base_scores)
 
 base_true_pool, base_scores_pool = load_base_validation_pool()
+
+# =========================================================
+# CONDITION -> MEDICINE CATEGORY MAPPING
+# =========================================================
+# The 'Reason' column in Medicine_description.xlsx is a CLEAN, CONTROLLED
+# vocabulary of 51 categories (Diabetes, Hypertension, Fever, Angina, etc.),
+# NOT free text. Matching against it with fuzzy word-overlap is unreliable
+# because your prediction labels use different wording (e.g. "Severe Fever"
+# vs "Pyrexia"). This dictionary maps your app's prediction labels to the
+# exact category values that exist in the spreadsheet.
+#
+# The 4 keys below correspond to the hard-coded safety overrides already in
+# your pipeline, so they are mapped with confidence.
+#
+# IMPORTANT: add one entry per class in `assets["label_encoder"].classes_`
+# (your ML model's raw disease labels) so every possible prediction has a
+# mapping. Run this once to see what you need to map:
+#     print(list(assets["label_encoder"].classes_))
+# then match each one to the closest categories from this list:
+#     ['Acne','Adhd','Allergies','Alzheimer','Amoebiasis','Anaemia','Angina',
+#      'Anxiety','Appetite','Arrhythmiasis','Arthritis','Cleanser',
+#      'Constipation','Contraception','Dandruff','Depression','Diabetes',
+#      'Diarrhoea','Digestion','Fever','Fungal','General','Glaucoma','Gout',
+#      'Haematopoiesis','Haemorrhoid','Hyperpigmentation','Hypertension',
+#      'Hyperthyroidism','Hypnosis','Hypotension','Hypothyroidism',
+#      'Infection','Leprosy','Malarial','Migraine','Mydriasis',
+#      'Osteoporosis','Pain','Parkinson','Psychosis','Pyrexia','Scabies',
+#      'Schizophrenia','Smoking','Supplement','Thrombolysis','Vaccines',
+#      'Vertigo','Viral','Wound']
+DISEASE_TO_MED_CATEGORY = {
+    # --- Safety-override labels (from the clinical override logic) ---
+    "High Heart Risk": ["Angina"],
+    "Diabetes / High Blood Sugar": ["Diabetes"],
+    "Severe Fever": ["Fever", "Pyrexia"],
+    "Breathing Trouble": ["Infection"],
+
+    # --- Add your model's own class names below, e.g.: ---
+    # "Migraine": ["Migraine"],
+    # "Common Cold": ["Viral", "General"],
+    # "Skin Allergy": ["Allergies"],
+    # "Stomach Infection": ["Infection", "Digestion"],
+}
+
+
+def get_matched_medicines(prediction_label, med_db, top_n=5):
+    """
+    Looks up medicines for a given prediction label.
+    1) Tries the exact category mapping (reliable, controlled vocabulary).
+    2) Falls back to fuzzy word-overlap matching (original behaviour) if
+       no mapping exists yet or the mapping returns no rows.
+    """
+    if med_db.empty:
+        return pd.DataFrame(columns=med_db.columns)
+
+    categories = DISEASE_TO_MED_CATEGORY.get(prediction_label, [])
+    if categories:
+        categories_norm = [c.lower() for c in categories]
+        matched = med_db[med_db["Reason_norm"].isin(categories_norm)]
+        if not matched.empty:
+            return matched.sample(n=min(top_n, len(matched)), random_state=42)
+
+    # Fallback: original fuzzy word-overlap match against the raw label
+    prediction_words = prediction_label.lower().split()
+    mask = med_db["Reason_norm"].apply(
+        lambda x: any(word in x for word in prediction_words if len(word) > 3)
+    )
+    matched = med_db[mask]
+    if not matched.empty:
+        return matched.head(top_n)
+
+    return matched
+
 
 # =========================================================
 # DETACHED NLP SYMPTOM VECTOR ENGINE
@@ -602,20 +677,12 @@ if st.session_state.diagnosis_triggered:
     with tab3:
         st.subheader("Related Medicines Info")
         st.caption("Common medicines generally associated with this condition (Do not take without a doctor's prescription).")
-        
-        # Break the prediction into individual words for a broader search
-        prediction_words = res["clinical_prediction"].lower().split()
-        
-        # Create a boolean mask to check if ANY of the words exist in the 'Reason' column
-        mask = med_db["Reason"].str.lower().apply(
-            lambda x: any(word in str(x) for word in prediction_words if len(word) > 3) 
-            # Note: len(word) > 3 ignores small words like "high" or "the"
-        )
-        
-        matched_meds = med_db[mask]
-        
+
+        # Category-based lookup first (reliable), fuzzy word-overlap as fallback.
+        matched_meds = get_matched_medicines(res["clinical_prediction"], med_db, top_n=5)
+
         if not matched_meds.empty:
-            for _, row in matched_meds.head(5).iterrows():
+            for _, row in matched_meds.iterrows():
                 st.markdown(f"""
                 <div class='med-card'>
                     <div class='drug-name'>{row.get('Drug_Name', 'Unknown')}</div>
