@@ -562,11 +562,27 @@ if st.session_state.diagnosis_triggered:
     ])
     
     with tab1:
-        st.subheader("AI Guess Probabilities")
-        prob_df = pd.DataFrame({"Possible Condition": assets["label_encoder"].classes_, "Probability (%)": res["prob_array"] * 100})
-        fig_prob = px.bar(prob_df.sort_values(by="Probability (%)"), x="Probability (%)", y="Possible Condition", 
-                          orientation='h', text_auto='.2f')
-        fig_prob.update_layout(template="plotly_dark", margin=dict(l=0, r=0, t=30, b=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+        st.subheader("Model Prediction Log-Probability Layout Breakdown")
+        
+        # 1. Create the dataframe with all 41 diseases
+        prob_df = pd.DataFrame({
+            "Target Classification": assets["label_encoder"].classes_, 
+            "Softmax Weight (%)": res["prob_array"] * 100
+        })
+        
+        # 2. THE FIX: Keep only the Top 10 highest probabilities
+        prob_df = prob_df.sort_values(by="Softmax Weight (%)", ascending=False).head(10)
+        
+        # 3. Draw the graph (sorting ascending so the biggest bar is at the top)
+        fig_prob = px.bar(
+            prob_df.sort_values(by="Softmax Weight (%)", ascending=True), 
+            x="Softmax Weight (%)", 
+            y="Target Classification", 
+            orientation='h', 
+            text_auto='.2f', 
+            title="Top 10 Most Likely Conditions"
+        )
+        fig_prob.update_layout(template="plotly_dark")
         st.plotly_chart(fig_prob, use_container_width=True)
         
     with tab2:
