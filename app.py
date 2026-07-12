@@ -5,6 +5,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import joblib
 import os
+import re
 import smtplib
 import shap
 import matplotlib.pyplot as plt
@@ -259,20 +260,48 @@ if "diagnosis_triggered" not in st.session_state:
     st.session_state.results = {}
 
 # =========================================================
-# CACHED ASSET LOADING LAYER
+# CACHED ASSET LOADING LAYER  (v2 — 3-model architecture)
 # =========================================================
+# This app now uses THREE trained models instead of one:
+#   1) symptom_model     -> RandomForest, 131 symptom features, 41 disease
+#                            classes (trained on symptom_encoded_dataset.csv)
+#   2) diabetes_model     -> RandomForest risk score trained on diabetes.csv,
+#                            restricted to features this app actually
+#                            collects (Glucose, BloodPressure, Age)
+#   3) heart_model        -> RandomForest risk score trained on
+#                            heart_disease_combined.csv, using only (age,
+#                            resting blood pressure). NOTE: the dataset's
+#                            'thalach' (max heart rate during a stress
+#                            test) and 'cp' (pain type during that test)
+#                            do NOT mean what a layperson means by "heart
+#                            rate" or "chest pain" — in this data,
+#                            asymptomatic patients have the HIGHEST disease
+#                            rate (silent ischemia), so those two columns
+#                            were deliberately excluded to avoid a backwards
+#                            risk score. Chest pain / high heart rate are
+#                            still caught by the hard safety-override rule
+#                            below, which is the medically correct place
+#                            for them.
+# No scaler is needed — tree ensembles don't require feature scaling.
 @st.cache_resource
 def load_clinical_assets():
-    required_files = ["model.pkl", "scaler.pkl", "label_encoder.pkl", "features.pkl"]
+    required_files = [
+        "symptom_model.pkl", "symptom_label_encoder.pkl", "symptom_features.pkl",
+        "diabetes_risk_model.pkl", "diabetes_risk_features.pkl",
+        "heart_risk_model.pkl", "heart_risk_features.pkl",
+    ]
     for file in required_files:
         if not os.path.exists(file):
             st.error(f"Error: Missing critical file -> {file}")
             st.stop()
     return {
-        "model": joblib.load("model.pkl"),
-        "scaler": joblib.load("scaler.pkl"),
-        "label_encoder": joblib.load("label_encoder.pkl"),
-        "features": joblib.load("features.pkl")
+        "symptom_model": joblib.load("symptom_model.pkl"),
+        "symptom_label_encoder": joblib.load("symptom_label_encoder.pkl"),
+        "symptom_features": joblib.load("symptom_features.pkl"),
+        "diabetes_model": joblib.load("diabetes_risk_model.pkl"),
+        "diabetes_features": joblib.load("diabetes_risk_features.pkl"),
+        "heart_model": joblib.load("heart_risk_model.pkl"),
+        "heart_features": joblib.load("heart_risk_features.pkl"),
     }
 
 assets = load_clinical_assets()
@@ -314,30 +343,62 @@ base_true_pool, base_scores_pool = load_base_validation_pool()
 # =========================================================
 # The 'Reason' column in Medicine_description.xlsx is a CLEAN, CONTROLLED
 # vocabulary of 51 categories (Diabetes, Hypertension, Fever, Angina, etc.),
-# NOT free text. Matching against it with fuzzy word-overlap is unreliable
-# because your prediction labels use different wording (e.g. "Severe Fever"
-# vs "Pyrexia"). This dictionary maps your app's prediction labels to the
-# exact category values that exist in the spreadsheet.
-#
-# Your label_encoder.pkl has only 4 raw ML classes:
-#     ['Cardiac Risk', 'Critical', 'Infection', 'Normal']
-# These are broad buckets driven mainly by your vitals, not specific
-# diseases — so the mapping below covers both those 4 classes AND the
-# 4 hard-coded safety-override labels from the clinical override logic.
-# "Normal" intentionally maps to an empty list; it's handled separately
-# in the UI below so a healthy result doesn't look like a data error.
+# NOT free text. Matching against it with fuzzy word-overlap is unreliable,
+# so every disease class the symptom model can output (41 classes), plus
+# the risk labels from the safety-override / risk-model logic, are mapped
+# below to the exact category values that exist in the spreadsheet.
 DISEASE_TO_MED_CATEGORY = {
-    # --- Safety-override labels (from the clinical override logic) ---
+    # --- Safety-override / risk-model labels ---
     "High Heart Risk": ["Angina"],
     "Diabetes / High Blood Sugar": ["Diabetes"],
     "Severe Fever": ["Fever", "Pyrexia"],
     "Breathing Trouble": ["Infection"],
-
-    # --- Raw ML model classes (assets["label_encoder"].classes_) ---
-    "Cardiac Risk": ["Angina"],
-    "Infection": ["Infection"],
-    "Critical": ["Infection", "Pain"],
+    "Elevated Heart Disease Risk": ["Angina"],
+    "Elevated Diabetes Risk": ["Diabetes"],
     "Normal": [],
+
+    # --- The 41 disease classes from the symptom model ---
+    "(vertigo) Paroymsal Positional Vertigo": ["Vertigo"],
+    "AIDS": ["Infection", "General"],
+    "Acne": ["Acne"],
+    "Alcoholic hepatitis": ["General"],
+    "Allergy": ["Allergies"],
+    "Arthritis": ["Arthritis"],
+    "Bronchial Asthma": ["General"],
+    "Cervical spondylosis": ["Pain"],
+    "Chicken pox": ["Viral"],
+    "Chronic cholestasis": ["General"],
+    "Common Cold": ["Viral"],
+    "Dengue": ["Viral"],
+    "Diabetes": ["Diabetes"],
+    "Dimorphic hemmorhoids(piles)": ["Haemorrhoid"],
+    "Drug Reaction": ["Allergies"],
+    "Fungal infection": ["Fungal"],
+    "GERD": ["Digestion"],
+    "Gastroenteritis": ["Digestion", "Infection"],
+    "Heart attack": ["Angina"],
+    "Hepatitis B": ["Viral", "General"],
+    "Hepatitis C": ["Viral"],
+    "Hepatitis D": ["Viral"],
+    "Hepatitis E": ["Viral"],
+    "Hypertension": ["Hypertension"],
+    "Hyperthyroidism": ["Hyperthyroidism"],
+    "Hypoglycemia": ["Diabetes"],
+    "Hypothyroidism": ["Hypothyroidism"],
+    "Impetigo": ["Infection"],
+    "Jaundice": ["General"],
+    "Malaria": ["Malarial"],
+    "Migraine": ["Migraine"],
+    "Osteoarthristis": ["Arthritis"],
+    "Paralysis (brain hemorrhage)": ["General"],
+    "Peptic ulcer diseae": ["Digestion"],
+    "Pneumonia": ["Infection"],
+    "Psoriasis": ["General"],
+    "Tuberculosis": ["Infection"],
+    "Typhoid": ["Infection"],
+    "Urinary tract infection": ["Infection"],
+    "Varicose veins": ["General"],
+    "hepatitis A": ["Viral"],
 }
 
 
@@ -345,7 +406,7 @@ def get_matched_medicines(prediction_label, med_db, top_n=5):
     """
     Looks up medicines for a given prediction label.
     1) Tries the exact category mapping (reliable, controlled vocabulary).
-    2) Falls back to fuzzy word-overlap matching (original behaviour) if
+    2) Falls back to fuzzy word-overlap matching against the raw label if
        no mapping exists yet or the mapping returns no rows.
     """
     if med_db.empty:
@@ -358,7 +419,7 @@ def get_matched_medicines(prediction_label, med_db, top_n=5):
         if not matched.empty:
             return matched.sample(n=min(top_n, len(matched)), random_state=42)
 
-    # Fallback: original fuzzy word-overlap match against the raw label
+    # Fallback: fuzzy word-overlap match against the raw label
     prediction_words = prediction_label.lower().split()
     mask = med_db["Reason_norm"].apply(
         lambda x: any(word in x for word in prediction_words if len(word) > 3)
@@ -369,41 +430,61 @@ def get_matched_medicines(prediction_label, med_db, top_n=5):
 
     return matched
 
+# =========================================================
+# SYMPTOM TEXT -> 131-FEATURE VECTOR ENCODER
+# =========================================================
+# Small set of everyday phrases mapped to the dataset's exact symptom
+# column names, for cases where the user's wording doesn't literally
+# contain the underlying feature name (e.g. "tired" -> fatigue).
+SYMPTOM_SYNONYMS = {
+    "high_fever": ["fever", "high fever", "burning up", "very hot"],
+    "mild_fever": ["mild fever", "slight fever", "low grade fever"],
+    "chest_pain": ["chest pain", "tight chest", "heart pain", "pain in chest"],
+    "breathlessness": ["difficulty breathing", "breathing problem", "shortness of breath", "cant breathe", "can't breathe"],
+    "fatigue": ["fatigue", "weakness", "tired", "exhausted", "no energy"],
+    "headache": ["headache", "head pain", "migraine"],
+    "vomiting": ["vomiting", "throwing up", "puking"],
+    "nausea": ["nausea", "feel sick", "queasy"],
+    "dizziness": ["dizziness", "dizzy", "lightheaded"],
+    "skin_rash": ["rash", "skin allergy", "red bumps"],
+    "cough": ["cough", "coughing"],
+    "stomach_pain": ["stomach pain", "belly ache", "tummy ache"],
+    "joint_pain": ["joint pain", "joints hurt"],
+    "back_pain": ["back pain", "backache"],
+    "runny_nose": ["runny nose", "stuffy nose"],
+    "chills": ["chills", "shivering cold"],
+    "loss_of_appetite": ["no appetite", "not hungry", "loss of appetite"],
+    "yellowish_skin": ["yellow skin", "jaundice"],
+    "itching": ["itching", "itchy"],
+    "diarrhoea": ["diarrhea", "diarrhoea", "loose motion"],
+}
 
-# =========================================================
-# DETACHED NLP SYMPTOM VECTOR ENGINE
-# =========================================================
-def encode_symptoms_to_dict(text, feature_list, vital_features):
-    text = text.lower().strip()
-    symptom_map = {
-        "fever": ["fever", "high fever", "temperature"],
-        "cough": ["cough", "coughing"],
-        "headache": ["headache", "migraine"],
-        "chest_pain": ["chest pain", "tight chest", "heart pain"],
-        "shortness_of_breath": ["difficulty breathing", "breathing problem", "shortness of breath"],
-        "rash": ["rash", "skin allergy"],
-        "fatigue": ["fatigue", "weakness", "tired"],
-        "vomiting": ["vomiting", "nausea"],
-        "dizziness": ["dizziness", "dizzy"]
-    }
-    
-    feature_dict = {}
-    for feature in feature_list:
-        if feature in vital_features:
-            continue
-        
-        found = 0
-        if feature in symptom_map:
-            for keyword in symptom_map[feature]:
-                if keyword in text:
-                    found = 1
+
+def encode_symptoms_to_vector(text, symptom_features):
+    """
+    Maps free-text symptom description onto the 131-dim binary feature
+    vector expected by the symptom disease model. Uses a small synonym
+    dictionary first, then falls back to matching the literal (underscore
+    -> space) feature name against the text for every remaining feature.
+    """
+    text = " " + text.lower().strip() + " "
+    vector = {f: 0 for f in symptom_features}
+
+    for feature, phrases in SYMPTOM_SYNONYMS.items():
+        if feature in vector:
+            for phrase in phrases:
+                if phrase in text:
+                    vector[feature] = 1
                     break
-        else:
-            clean_feature = feature.replace("_", " ")
-            if clean_feature in text:
-                found = 1
-        feature_dict[feature] = found
-    return feature_dict
+
+    for feature in symptom_features:
+        if vector[feature] == 1:
+            continue
+        clean = feature.replace("_", " ").replace("(", "").replace(")", "")
+        if clean and clean in text:
+            vector[feature] = 1
+
+    return vector
 
 # =========================================================
 # OUTBOUND SYSTEM UTILITIES (EMAIL & PDF)
@@ -468,6 +549,8 @@ def build_pdf_report(name, age, res_dict):
     pdf.set_font("Arial", "", 11)
     pdf.cell(0, 6, f"- Breathing/Heart Risk Score (NEWS2): {res_dict['news2']}", ln=1)
     pdf.cell(0, 6, f"- Infection Risk Score (qSOFA): {res_dict['qsofa']}", ln=1)
+    pdf.cell(0, 6, f"- Diabetes Risk Model Score: {round(res_dict['diabetes_risk_prob'] * 100, 1)}%", ln=1)
+    pdf.cell(0, 6, f"- Heart Disease Risk Model Score: {round(res_dict['heart_risk_prob'] * 100, 1)}%", ln=1)
     
     # PDF Medical Disclaimer
     pdf.ln(8)
@@ -504,36 +587,39 @@ with col2:
 symptoms = st.text_area("Describe your symptoms (e.g., 'I have a very bad headache and a high fever')")
 
 # =========================================================
-# COMPUTATION PIPELINE
+# COMPUTATION PIPELINE  (v2)
 # =========================================================
 if st.button("Check My Symptoms"):
     symptom_text = symptoms.lower()
-    vital_features = ["age", "hr", "bp", "spo2", "temp", "glucose"]
-    
-    feature_dict = encode_symptoms_to_dict(symptoms, assets["features"], vital_features)
-    feature_dict["age"] = age
-    feature_dict["hr"] = hr
-    feature_dict["bp"] = bp
-    feature_dict["spo2"] = spo2
-    feature_dict["temp"] = temp
-    feature_dict["glucose"] = gluc
-    
-    expected_features = assets["scaler"].feature_names_in_
-    input_data = [feature_dict.get(col, 0) for col in expected_features]
-    input_df = pd.DataFrame([input_data], columns=expected_features)
-    
-    # ML Stage
-    scaled_input = assets["scaler"].transform(input_df)
-    prob = assets["model"].predict_proba(scaled_input)
+
+    # ---- 1) Symptom -> disease prediction (41-class model) ----
+    symptom_vector = encode_symptoms_to_vector(symptoms, assets["symptom_features"])
+    input_df = pd.DataFrame([[symptom_vector[f] for f in assets["symptom_features"]]],
+                             columns=assets["symptom_features"])
+
+    prob = assets["symptom_model"].predict_proba(input_df.values)
     pred_index = np.argmax(prob[0])
-    ml_prediction = assets["label_encoder"].inverse_transform([pred_index])[0]
+    ml_prediction = assets["symptom_label_encoder"].inverse_transform([pred_index])[0].strip()
     confidence = float(prob[0][pred_index] * 100)
-    
-    # Override Framework
+
+    # ---- 2) Auxiliary vitals-based risk models ----
+    chest_pain_flag = 1 if ("chest pain" in symptom_text or symptom_vector.get("chest_pain", 0) == 1) else 0
+
+    diabetes_risk_prob = float(
+        assets["diabetes_model"].predict_proba([[gluc, bp, age]])[0][1]
+    )
+    heart_risk_prob = float(
+        assets["heart_model"].predict_proba([[age, bp]])[0][1]
+    )
+
+    # ---- 3) Clinical override framework ----
+    # Hard vital-sign safety nets stay first (life-threatening thresholds),
+    # then the two trained risk models get a say, then the symptom model's
+    # own top prediction is used as the default.
     clinical_prediction = ml_prediction
     override_reason = None
-    
-    if hr >= 145 or "chest pain" in symptom_text:
+
+    if hr >= 145 or chest_pain_flag:
         clinical_prediction = "High Heart Risk"
         confidence = max(confidence, 96.0)
         override_reason = "Very high heart rate or chest pain detected"
@@ -549,10 +635,19 @@ if st.button("Check My Symptoms"):
         clinical_prediction = "Breathing Trouble"
         confidence = max(confidence, 92.0)
         override_reason = "Oxygen levels are dangerously low"
+    elif heart_risk_prob >= 0.6:
+        clinical_prediction = "Elevated Heart Disease Risk"
+        confidence = max(confidence, heart_risk_prob * 100)
+        override_reason = f"Heart risk model estimates {heart_risk_prob*100:.0f}% probability based on age, blood pressure, heart rate, and chest pain"
+    elif diabetes_risk_prob >= 0.6:
+        clinical_prediction = "Elevated Diabetes Risk"
+        confidence = max(confidence, diabetes_risk_prob * 100)
+        override_reason = f"Diabetes risk model estimates {diabetes_risk_prob*100:.0f}% probability based on glucose, blood pressure, and age"
 
-    # Aggregation
-    risk = sum([3 if hr >= 145 or "chest pain" in symptom_text else 0,
-                2 if temp > 39 else 0, 3 if spo2 < 90 else 0, 2 if gluc > 200 else 0])
+    # ---- 4) Aggregated risk scoring (unchanged formulas, now vitals + models) ----
+    risk = sum([3 if hr >= 145 or chest_pain_flag else 0,
+                2 if temp > 39 else 0, 3 if spo2 < 90 else 0, 2 if gluc > 200 else 0,
+                1 if heart_risk_prob >= 0.6 else 0, 1 if diabetes_risk_prob >= 0.6 else 0])
     
     news2 = sum([3 if spo2 < 91 else (2 if spo2 < 94 else 0),
                  3 if temp > 39 else (1 if temp > 38 else 0),
@@ -581,8 +676,9 @@ if st.button("Check My Symptoms"):
         "severity": severity, "status_color": status_color, "status_text": status_text, 
         "override_reason": override_reason, "symptom_text": symptom_text, 
         "input_df": input_df, "prob_array": prob[0], "pred_index": pred_index,
-        "scaled_input": scaled_input, "live_true": live_true, "live_scores": live_scores,
-        "live_pred": live_pred, "cv_scores": cv_scores
+        "scaled_input": input_df.values, "live_true": live_true, "live_scores": live_scores,
+        "live_pred": live_pred, "cv_scores": cv_scores,
+        "diabetes_risk_prob": diabetes_risk_prob, "heart_risk_prob": heart_risk_prob,
     }
     st.session_state.diagnosis_triggered = True
     
@@ -611,10 +707,12 @@ if st.session_state.diagnosis_triggered:
     </div>
     """, unsafe_allow_html=True)
     
-    mc1, mc2, mc3 = st.columns(3)
+    mc1, mc2, mc3, mc4, mc5 = st.columns(5)
     mc1.metric("Health Risk Score (0-10)", res["risk"])
     mc2.metric("Condition Severity", res["severity"])
     mc3.metric("AI Certainty", f"{round(res['confidence'], 2)}%")
+    mc4.metric("Diabetes Risk", f"{round(res['diabetes_risk_prob'] * 100, 1)}%")
+    mc5.metric("Heart Disease Risk", f"{round(res['heart_risk_prob'] * 100, 1)}%")
     
     st.write("---")
     
@@ -627,7 +725,10 @@ if st.session_state.diagnosis_triggered:
     
     with tab1:
         st.subheader("AI Guess Probabilities")
-        prob_df = pd.DataFrame({"Possible Condition": assets["label_encoder"].classes_, "Probability (%)": res["prob_array"] * 100})
+        st.caption("Top 10 most likely conditions out of the 41 the symptom model was trained to recognize.")
+        classes = [c.strip() for c in assets["symptom_label_encoder"].classes_]
+        prob_df = pd.DataFrame({"Possible Condition": classes, "Probability (%)": res["prob_array"] * 100})
+        prob_df = prob_df.sort_values(by="Probability (%)", ascending=False).head(10)
         fig_prob = px.bar(prob_df.sort_values(by="Probability (%)"), x="Probability (%)", y="Possible Condition", 
                           orientation='h', text_auto='.2f')
         fig_prob.update_layout(template="plotly_dark", margin=dict(l=0, r=0, t=30, b=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
@@ -637,10 +738,11 @@ if st.session_state.diagnosis_triggered:
         st.subheader("Symptom Impact Analysis")
         st.caption("Seeing which of your specific inputs (like your fever or a headache) most influenced the AI's final answer.")
         try:
-            if hasattr(assets["model"], "tree_method") or "Forest" in type(assets["model"]).__name__ or "Tree" in type(assets["model"]).__name__:
-                explainer = shap.TreeExplainer(assets["model"])
+            model = assets["symptom_model"]
+            if hasattr(model, "tree_method") or "Forest" in type(model).__name__ or "Tree" in type(model).__name__:
+                explainer = shap.TreeExplainer(model)
             else:
-                explainer = shap.KernelExplainer(assets["model"].predict_proba, res["scaled_input"][:1])
+                explainer = shap.KernelExplainer(model.predict_proba, res["scaled_input"][:1])
             
             shap_values = explainer.shap_values(res["scaled_input"])
             
@@ -725,16 +827,19 @@ if st.session_state.diagnosis_triggered:
         with right_col:
             st.header("Behind the Scenes")
             st.markdown("""
-            This platform uses smart technology to guess your health status in three simple steps:
+            This platform uses smart technology to guess your health status in four steps:
             
             **1. Reading Your Symptoms**
-            The app reads the words you typed in the box and combines them with your numbers (like heart rate and temperature). It feeds this into an AI model trained on historical medical data.
+            The app reads the words you typed and converts them into 131 individual symptom flags (fever, cough, headache, chest pain, etc.), which feed a disease-prediction model trained on 41 possible conditions.
             
-            **2. Safety Checks**
-            Because AI isn't perfect, we have hard-coded safety rules. For example, if your oxygen drops below 90%, the app ignores the AI and immediately warns you that you have a breathing risk.
+            **2. Two Specialist Risk Models**
+            Separate models — trained specifically on diabetes and heart-disease data — score your risk for those two conditions from your vitals (glucose, blood pressure, heart rate, age, chest pain).
             
-            **3. Standard Medical Scoring**
-            The app calculates standard scores (like NEWS2) that real nurses use in hospitals to see how urgent a patient's condition is.
+            **3. Safety Checks**
+            Because AI isn't perfect, we still have hard-coded safety rules. For example, if your oxygen drops below 90%, the app ignores the AI and immediately warns you of a breathing risk.
+            
+            **4. Standard Medical Scoring**
+            The app calculates standard scores (like NEWS2 and qSOFA) that real nurses use in hospitals to see how urgent a patient's condition is.
             """)
 
 st.write("---")
