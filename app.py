@@ -259,28 +259,30 @@ if "diagnosis_triggered" not in st.session_state:
     st.session_state.results = {}
 
 # =========================================================
-# CACHED ASSET LOADING LAYER
+# CACHED ASSET LOADING LAYER (UPDATED TO BYPASS FEATURES.PKL)
 # =========================================================
 @st.cache_resource
 def load_clinical_assets():
-    # 1. We removed "features.pkl" from this list so it stops crashing
-    required_files = ["model.pkl", "scaler.pkl", "label_encoder.pkl"] 
-    
+    # Removed "features.pkl" to prevent the error
+    required_files = ["model.pkl", "scaler.pkl", "label_encoder.pkl"]
     for file in required_files:
         if not os.path.exists(file):
             st.error(f"Error: Missing critical file -> {file}")
             st.stop()
             
-    # 2. Load the scaler first
+    # Load scaler to extract feature names
     loaded_scaler = joblib.load("scaler.pkl")
     
     return {
         "model": joblib.load("model.pkl"),
         "scaler": loaded_scaler,
         "label_encoder": joblib.load("label_encoder.pkl"),
-        # 3. Extract the feature names directly from the scaler's memory!
+        # Extract features directly from the scaler
         "features": list(loaded_scaler.feature_names_in_) 
     }
+
+assets = load_clinical_assets()
+
 @st.cache_data
 def load_medicine_db():
     try:
