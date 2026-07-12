@@ -319,24 +319,13 @@ base_true_pool, base_scores_pool = load_base_validation_pool()
 # vs "Pyrexia"). This dictionary maps your app's prediction labels to the
 # exact category values that exist in the spreadsheet.
 #
-# The 4 keys below correspond to the hard-coded safety overrides already in
-# your pipeline, so they are mapped with confidence.
-#
-# IMPORTANT: add one entry per class in `assets["label_encoder"].classes_`
-# (your ML model's raw disease labels) so every possible prediction has a
-# mapping. Run this once to see what you need to map:
-#     print(list(assets["label_encoder"].classes_))
-# then match each one to the closest categories from this list:
-#     ['Acne','Adhd','Allergies','Alzheimer','Amoebiasis','Anaemia','Angina',
-#      'Anxiety','Appetite','Arrhythmiasis','Arthritis','Cleanser',
-#      'Constipation','Contraception','Dandruff','Depression','Diabetes',
-#      'Diarrhoea','Digestion','Fever','Fungal','General','Glaucoma','Gout',
-#      'Haematopoiesis','Haemorrhoid','Hyperpigmentation','Hypertension',
-#      'Hyperthyroidism','Hypnosis','Hypotension','Hypothyroidism',
-#      'Infection','Leprosy','Malarial','Migraine','Mydriasis',
-#      'Osteoporosis','Pain','Parkinson','Psychosis','Pyrexia','Scabies',
-#      'Schizophrenia','Smoking','Supplement','Thrombolysis','Vaccines',
-#      'Vertigo','Viral','Wound']
+# Your label_encoder.pkl has only 4 raw ML classes:
+#     ['Cardiac Risk', 'Critical', 'Infection', 'Normal']
+# These are broad buckets driven mainly by your vitals, not specific
+# diseases — so the mapping below covers both those 4 classes AND the
+# 4 hard-coded safety-override labels from the clinical override logic.
+# "Normal" intentionally maps to an empty list; it's handled separately
+# in the UI below so a healthy result doesn't look like a data error.
 DISEASE_TO_MED_CATEGORY = {
     # --- Safety-override labels (from the clinical override logic) ---
     "High Heart Risk": ["Angina"],
@@ -344,11 +333,11 @@ DISEASE_TO_MED_CATEGORY = {
     "Severe Fever": ["Fever", "Pyrexia"],
     "Breathing Trouble": ["Infection"],
 
-    # --- Add your model's own class names below, e.g.: ---
-    # "Migraine": ["Migraine"],
-    # "Common Cold": ["Viral", "General"],
-    # "Skin Allergy": ["Allergies"],
-    # "Stomach Infection": ["Infection", "Digestion"],
+    # --- Raw ML model classes (assets["label_encoder"].classes_) ---
+    "Cardiac Risk": ["Angina"],
+    "Infection": ["Infection"],
+    "Critical": ["Infection", "Pain"],
+    "Normal": [],
 }
 
 
@@ -679,19 +668,22 @@ if st.session_state.diagnosis_triggered:
         st.caption("Common medicines generally associated with this condition (Do not take without a doctor's prescription).")
 
         # Category-based lookup first (reliable), fuzzy word-overlap as fallback.
-        matched_meds = get_matched_medicines(res["clinical_prediction"], med_db, top_n=5)
-
-        if not matched_meds.empty:
-            for _, row in matched_meds.iterrows():
-                st.markdown(f"""
-                <div class='med-card'>
-                    <div class='drug-name'>{row.get('Drug_Name', 'Unknown')}</div>
-                    <div class='drug-reason'>Usually used for: {row.get('Reason', '')}</div>
-                    <div class='drug-desc'>{row.get('Description', 'No description available.')}</div>
-                </div>
-                """, unsafe_allow_html=True)
+        if res["clinical_prediction"] == "Normal":
+            st.success("Your vitals and symptoms look normal — no specific medication needed. Stay hydrated and rest as needed.")
         else:
-            st.info(f"No common medication records found for '{res['clinical_prediction']}' in our database.")
+            matched_meds = get_matched_medicines(res["clinical_prediction"], med_db, top_n=5)
+
+            if not matched_meds.empty:
+                for _, row in matched_meds.iterrows():
+                    st.markdown(f"""
+                    <div class='med-card'>
+                        <div class='drug-name'>{row.get('Drug_Name', 'Unknown')}</div>
+                        <div class='drug-reason'>Usually used for: {row.get('Reason', '')}</div>
+                        <div class='drug-desc'>{row.get('Description', 'No description available.')}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.info(f"No common medication records found for '{res['clinical_prediction']}' in our database.")
 
     with tab4:
         left_col, right_col = st.columns([3, 2])
